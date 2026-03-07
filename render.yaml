@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: grandmaster-chess
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn -k eventlet -w 1 --bind 0.0.0.0:$PORT app_online:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: MAIL_SERVER
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_USE_TLS
+        value: True
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_DEFAULT_SENDER
+        sync: false
+
+databases:
+  - name: chess-db
+    plan: free

@@ -1,0 +1,31 @@
+# Environment variables
+.env
+.env.local
+
+# Virtual environment
+venv/
+env/
+
+# Database
+*.db
+chess.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+*_backup.py
+*_OLD.py
+
+# Binaries
+stockfish.exe
+stockfish/
