@@ -14,6 +14,8 @@
 [![Live Demo](https://img.shields.io/badge/🎮_Live_Demo-Play_Now-success?style=for-the-badge)](https://grandmaster-tj4w.onrender.com)
 
 
+[![Live Demo](https://img.shields.io/badge/🎮_Live_Demo-Play_Now-success?style=for-the-badge)](https://grandmaster-tj4w.onrender.com)
+
 [Features](#-features) • [Tech Stack](#-tech-stack) • [Architecture](#-architecture) • [How It Works](#-how-it-works) • [Roadmap](#-roadmap)
 
 </div>

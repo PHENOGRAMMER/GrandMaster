@@ -6,7 +6,7 @@ Features: Email verification, Chat, Analysis, Theme, Sounds, Multiple time contr
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, jsonify, request, redirect, url_for, session, current_app
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, current_app, send_from_directory
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -175,6 +175,16 @@ Happy playing!
     except Exception as e:
         print(f"❌ Email preparation failed: {e}")
         return False
+
+
+# ============================================================================
+# UTILITY ROUTES
+# ============================================================================
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 # ============================================================================
