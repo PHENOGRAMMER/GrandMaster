@@ -11,6 +11,9 @@ let boardState = null;
 let isWhiteTurn = true;
 let isAIThinking = false;
 let boardFlipped = false;
+let draggedPiece = null;
+let dragFrom = null;
+let lastMoveSquares = [];
 
 // Clock variables
 let whiteTime = 600;
@@ -239,6 +242,14 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeSoundControls();
     initializeTimeControls();
 });
+
+// Mobile touch improvements
+document.addEventListener("touchstart", function () { }, true);
+
+// Prevent double zoom on mobile
+document.addEventListener("dblclick", function (e) {
+    e.preventDefault();
+}, { passive: false });
 
 function handleKeyPress(event) {
     if (!isAnalysisMode) return;
@@ -608,6 +619,10 @@ function confirmPvPGame() {
     startGame('pvp');
 }
 
+function confirmPvPMatch() {
+    confirmPvPGame();
+}
+
 function joinMatchmaking() {
     if (!currentUser) {
         alert('Please login to play online!');
@@ -690,34 +705,45 @@ function sendOnlineMove(from, to, promotion = 'Q') {
 function handleOpponentMove(data) {
     // Apply increment to opponent who just moved
     if (clocksEnabled && currentIncrement > 0) {
-        if (isWhiteTurn) whiteTime += currentIncrement;
-        else blackTime += currentIncrement;
+        if (!isWhiteTurn) whiteTime += currentIncrement; // Opponent was white
+        else blackTime += currentIncrement; // Opponent was black
         updateClockDisplay();
     }
 
-    boardState = data.board;
-    isWhiteTurn = data.whiteToMove;
-    isMyTurn = (myColor === 'white') === isWhiteTurn;
-    totalMoves++;
-
     if (data.move) {
-        addMove(data.move, totalMoves - 1);
+        lastMoveSquares = [data.move.from, data.move.to];
+        animatePieceLocally(data.move.from, data.move.to).then(() => {
+            boardState = data.board;
+            isWhiteTurn = data.whiteToMove;
+            isMyTurn = (myColor === 'white') === isWhiteTurn;
+            totalMoves++;
 
-        // Play appropriate sound
-        if (data.checkmate || data.stalemate) {
-            playSound('gameEnd');
-        } else if (data.inCheck) {
-            playSound('check');
-        } else if (data.move.notation && data.move.notation.includes('x')) {
-            playSound('capture');
-        } else {
-            playSound('move');
-        }
+            addMove(data.move, totalMoves - 1);
+
+            // Play appropriate sound
+            if (data.checkmate || data.stalemate) {
+                playSound('gameEnd');
+            } else if (data.inCheck) {
+                playSound('check');
+            } else if (data.move.notation && data.move.notation.includes('x')) {
+                playSound('capture');
+            } else {
+                playSound('move');
+            }
+
+            renderBoard();
+            updateTurnIndicator();
+            updatePlayerCardHighlight();
+        });
+    } else {
+        boardState = data.board;
+        isWhiteTurn = data.whiteToMove;
+        isMyTurn = (myColor === 'white') === isWhiteTurn;
+        totalMoves++;
+        renderBoard();
+        updateTurnIndicator();
+        updatePlayerCardHighlight();
     }
-
-    renderBoard();
-    updateTurnIndicator();
-    updatePlayerCardHighlight();
 
     if (data.checkmate || data.stalemate || data.isDraw) {
         isGameComplete = true;
@@ -1405,6 +1431,30 @@ function renderBoard() {
 
             if (!isAnalysisMode && (!isOnlineGame || isMyTurn)) {
                 square.addEventListener('click', () => handleSquareClick(row, col));
+
+                // Set piece draggable
+                const pEl = square.querySelector('.piece');
+                if (pEl) {
+                    pEl.draggable = true;
+                    pEl.addEventListener('dragstart', (e) => handleDragStart(e, row, col));
+                    pEl.addEventListener('dragend', handleDragEnd);
+
+                    // Mobile Touch
+                    pEl.addEventListener('touchstart', (e) => handleTouchStart(e, row, col), { passive: false });
+                    pEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+                    pEl.addEventListener('touchend', handleTouchEnd, { passive: false });
+                }
+
+                // Allow drops
+                square.addEventListener('dragover', handleDragOver);
+                square.addEventListener('dragenter', handleDragEnter);
+                square.addEventListener('dragleave', handleDragLeave);
+                square.addEventListener('drop', (e) => handleDrop(e, row, col));
+            }
+
+            // Highlight last move
+            if (lastMoveSquares.some(s => s.row === row && s.col === col)) {
+                square.classList.add('last-move');
             }
 
             board.appendChild(square);
@@ -1548,6 +1598,7 @@ async function makeMove(from, to, promotion = 'Q') {
                 updateClockDisplay();
             }
 
+            lastMoveSquares = [from, to];
             boardState = data.board;
             isWhiteTurn = data.whiteToMove;
             totalMoves++;
@@ -1607,6 +1658,7 @@ async function getAIMove() {
 
         if (data.success) {
             if (data.move) {
+                lastMoveSquares = [data.move.from, data.move.to];
                 await animatePieceLocally(data.move.from, data.move.to);
             }
 
@@ -1936,6 +1988,147 @@ function showToast(msg) {
     toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2500);
 }
 
+function handleDragStart(e, row, col) {
+    if (isAIThinking || isAnalysisMode) return;
+    const piece = boardState[row][col];
+    if (piece === '--' || (piece[0] === 'w') !== isWhiteTurn) {
+        e.preventDefault();
+        return;
+    }
+
+    draggedPiece = e.target;
+    dragFrom = { row, col };
+    draggedPiece.classList.add('dragging');
+
+    selectedSquare = { row, col };
+    highlightSquare(row, col);
+    getValidMoves(row, col);
+
+    e.dataTransfer.setData('text/plain', JSON.stringify({ row, col }));
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+    e.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function handleDragEnd(e) {
+    if (draggedPiece) draggedPiece.classList.remove('dragging');
+}
+
+async function handleDrop(e, row, col) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+
+    if (!dragFrom) return;
+
+    const from = dragFrom;
+    const to = { row, col };
+
+    if (from.row === to.row && from.col === to.col) return;
+
+    const isValid = validMoves.some(m => m.row === row && m.col === col);
+    if (isValid) {
+        const piece = boardState[from.row][from.col];
+        const isPawn = piece[1] === 'p';
+        const isPromotion = isPawn && (row === 0 || row === 7);
+
+        if (isPromotion) {
+            pendingPromotion = { from, to };
+            document.getElementById('promotion-modal').style.display = 'flex';
+        } else {
+            if (isOnlineGame) sendOnlineMove(from, to);
+            else await makeMove(from, to);
+        }
+    }
+
+    clearHighlights();
+    selectedSquare = null;
+    validMoves = [];
+    dragFrom = null;
+    draggedPiece = null;
+}
+
+// Mobile Touch Handlers
+let touchElement = null;
+
+function handleTouchStart(e, row, col) {
+    if (isAIThinking || isAnalysisMode) return;
+    const piece = boardState[row][col];
+    if (piece === '--' || (piece[0] === 'w') !== isWhiteTurn) return;
+
+    e.preventDefault();
+    touchElement = e.target;
+    dragFrom = { row, col };
+
+    selectedSquare = { row, col };
+    highlightSquare(row, col);
+    getValidMoves(row, col);
+
+    touchElement.style.position = 'fixed';
+    touchElement.style.zIndex = '1000';
+    touchElement.style.pointerEvents = 'none';
+    updateTouchPos(e.touches[0]);
+}
+
+function handleTouchMove(e) {
+    if (!touchElement) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    updateTouchPos(touch);
+
+    // Highlight square under touch
+    const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+    const square = elem ? elem.closest('.square') : null;
+
+    document.querySelectorAll('.square').forEach(sq => sq.classList.remove('drag-over'));
+    if (square) square.classList.add('drag-over');
+}
+
+async function handleTouchEnd(e) {
+    if (!touchElement) return;
+    e.preventDefault();
+
+    const touch = e.changedTouches[0];
+    const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+    const square = elem ? elem.closest('.square') : null;
+
+    touchElement.style.position = '';
+    touchElement.style.zIndex = '';
+    touchElement.style.left = '';
+    touchElement.style.top = '';
+    touchElement.style.pointerEvents = '';
+
+    if (square) {
+        const row = parseInt(square.dataset.row);
+        const col = parseInt(square.dataset.col);
+        await handleDrop(e, row, col);
+    } else {
+        clearHighlights();
+        selectedSquare = null;
+        validMoves = [];
+    }
+
+    touchElement = null;
+    dragFrom = null;
+}
+
+function updateTouchPos(touch) {
+    if (!touchElement || !touch) return;
+    const size = touchElement.offsetWidth;
+    touchElement.style.left = (touch.clientX - size / 2) + 'px';
+    touchElement.style.top = (touch.clientY - size / 2) + 'px';
+}
+
 function animatePieceLocally(from, to) {
     return new Promise(resolve => {
         const fromSquare = document.querySelector(`.square[data-row="${from.row}"][data-col="${from.col}"]`);
@@ -1950,10 +2143,10 @@ function animatePieceLocally(from, to) {
                 const dy = toRect.top - fromRect.top;
 
                 if (dx !== 0 || dy !== 0) {
-                    piece.style.transition = 'transform 0.15s ease-out';
+                    piece.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
                     piece.style.transform = `translate(${dx}px, ${dy}px)`;
                     piece.style.zIndex = '100';
-                    setTimeout(resolve, 150);
+                    setTimeout(resolve, 200);
                     return;
                 }
             }
