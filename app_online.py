@@ -91,25 +91,13 @@ else:
 
 
 # Keep Alive Thread for Render
-def keep_alive():
-    """Background thread that pings the server to prevent idling."""
-    time.sleep(20) # Wait for server to start
-    print("🚀 Self-ping keep-alive thread started")
-    while True:
-        try:
-            # Ping the health route every 10 minutes
-            requests.get("https://grandmaster-tj4w.onrender.com/health")
-        except Exception as e:
-            print(f"Keep-alive ping failed: {e}")
-        time.sleep(600)
 
-threading.Thread(target=keep_alive, daemon=True).start()
 
 
 @app.route("/health")
 def health():
     """Service health check endpoint."""
-    return {"status": "ok"}
+    return {"status": "ok"}, 200
 
 
 @login_manager.user_loader
@@ -1261,6 +1249,123 @@ def handle_chat_message(data):
     except Exception as e:
         print(f"Chat error: {e}")
 
+# ==========================================
+# TEMPORARY ADMIN ROUTE - DELETE AFTER USE!
+# ==========================================
+@app.route('/clear-database-temp-route-xyz', methods=['GET'])
+def clear_database_temp():
+    """Temporary route to clear all database entries"""
+    try:
+        from models import MatchmakingQueue
+        
+        # Get counts before deletion
+        users_count = User.query.count()
+        games_count = Game.query.count()
+        queue_count = MatchmakingQueue.query.count()
+        
+        # Delete all data
+        MatchmakingQueue.query.delete()
+        Game.query.delete()
+        User.query.delete()
+        db.session.commit()
+        
+        # Return success page
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Database Cleared</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                    max-width: 600px;
+                    margin: 50px auto;
+                    padding: 20px;
+                    background: #f5f5f5;
+                }}
+                .card {{
+                    background: white;
+                    padding: 30px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }}
+                h1 {{
+                    color: #28a745;
+                    margin-top: 0;
+                }}
+                .stats {{
+                    background: #f8f9fa;
+                    padding: 20px;
+                    margin: 20px 0;
+                    border-radius: 5px;
+                    border-left: 4px solid #28a745;
+                }}
+                .stats p {{
+                    margin: 10px 0;
+                    font-size: 16px;
+                }}
+                .btn {{
+                    display: inline-block;
+                    margin-top: 20px;
+                    padding: 12px 24px;
+                    background: #007bff;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                }}
+                .btn:hover {{
+                    background: #0056b3;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>✅ Database Cleared Successfully!</h1>
+                <div class="stats">
+                    <p><strong>📊 Deleted Records:</strong></p>
+                    <p>👥 Users: <strong>{users_count}</strong></p>
+                    <p>♟️ Games: <strong>{games_count}</strong></p>
+                    <p>🎲 Queue Entries: <strong>{queue_count}</strong></p>
+                </div>
+                <p style="color: #666;">All database tables have been cleared. You can now register with any username or email!</p>
+                <a href="/" class="btn">← Back to Homepage</a>
+            </div>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        db.session.rollback()
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error</title>
+            <style>
+                body {{
+                    font-family: Arial;
+                    max-width: 600px;
+                    margin: 50px auto;
+                    padding: 20px;
+                }}
+                .error {{
+                    background: #f8d7da;
+                    border: 1px solid #f5c6cb;
+                    color: #721c24;
+                    padding: 20px;
+                    border-radius: 5px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="error">
+                <h1>❌ Error Clearing Database</h1>
+                <p><code>{str(e)}</code></p>
+                <p><a href="/">← Back to Homepage</a></p>
+            </div>
+        </body>
+        </html>
+        """
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
