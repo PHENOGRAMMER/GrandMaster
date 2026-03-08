@@ -696,6 +696,13 @@ function startOnlineGame(data) {
 }
 
 function sendOnlineMove(from, to, promotion = 'Q') {
+    // Apply local increment for better UX
+    if (clocksEnabled && currentIncrement > 0) {
+        if (isWhiteTurn) whiteTime += currentIncrement;
+        else blackTime += currentIncrement;
+        updateClockDisplay();
+    }
+
     socket.emit('online_move', {
         game_id: gameId,
         move: { from, to, promotion }
@@ -703,10 +710,10 @@ function sendOnlineMove(from, to, promotion = 'Q') {
 }
 
 function handleOpponentMove(data) {
-    // Apply increment to opponent who just moved
+    // Apply increment to opponent who just moved (before turn flips)
     if (clocksEnabled && currentIncrement > 0) {
-        if (!isWhiteTurn) whiteTime += currentIncrement; // Opponent was white
-        else blackTime += currentIncrement; // Opponent was black
+        if (isWhiteTurn) whiteTime += currentIncrement;
+        else blackTime += currentIncrement;
         updateClockDisplay();
     }
 
