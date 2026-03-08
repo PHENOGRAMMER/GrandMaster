@@ -498,10 +498,25 @@ def set_skill_level(skill_level):
 
 
 def get_position_evaluation(fen):
-    """Get position evaluation (centipawns)."""
+    """Get position evaluation (centipawns) - Absolute from White perspective."""
     global _stockfish_engine
     if _stockfish_engine and _stockfish_engine.mode != 'none':
-        return _stockfish_engine.get_evaluation(fen)
+        ev = _stockfish_engine.get_evaluation(fen)
+        if ev is None: return None
+        
+        # Determine if it's Black's turn from FEN
+        parts = fen.split()
+        # Side to move is the second element (index 1)
+        is_white_to_move = len(parts) > 1 and parts[1] == 'w'
+        
+        if not is_white_to_move:
+            if isinstance(ev, str) and ev.startswith('M'):
+                # Handle Mate strings like 'M8' or 'M-8'
+                # val will be positive if Black has mate, negative if White has mate
+                val = int(ev[1:])
+                return f"M{-val}"
+            return -ev
+        return ev
     return None
 
 

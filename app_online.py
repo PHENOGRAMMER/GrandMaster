@@ -702,14 +702,22 @@ def analyze_game(game_id):
                     eb = 100.0 if str(eval_before).startswith('M') else float(eval_before)
                     ea = 100.0 if str(eval_after).startswith('M') else float(eval_after)
                     
-                    diff = ea - eb if (i % 2 == 0) else eb - ea
+                    diff = ea - eb
                     
-                    if diff > 0.5: classification = 'brilliant'
-                    elif diff > -0.2: classification = 'best'
-                    elif diff > -0.5: classification = 'good'
-                    elif diff > -1.0: classification = 'inaccuracy'
-                    elif diff > -2.0: classification = 'mistake'
-                    else: classification = 'blunder'
+                    if i % 2 == 0: # White's move
+                        if diff > 0.8: classification = 'brilliant'
+                        elif diff > -0.1: classification = 'best'
+                        elif diff > -0.4: classification = 'good'
+                        elif diff > -1.0: classification = 'inaccuracy'
+                        elif diff > -2.0: classification = 'mistake'
+                        else: classification = 'blunder'
+                    else: # Black's move
+                        if diff < -0.8: classification = 'brilliant'
+                        elif diff < 0.1: classification = 'best'
+                        elif diff < 0.4: classification = 'good'
+                        elif diff < 1.0: classification = 'inaccuracy'
+                        elif diff < 2.0: classification = 'mistake'
+                        else: classification = 'blunder'
                 except:
                     pass
 
