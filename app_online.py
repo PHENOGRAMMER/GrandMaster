@@ -658,19 +658,67 @@ def analyze_game(game_id):
     try:
         game = local_games[game_id]
         moves = game.get('moves', [])
+        positions = game.get('positions', [])
         
-        if len(moves) < 2:
-            return jsonify({'success': False, 'error': 'Not enough moves'}), 400
+        if len(moves) == 0:
+            return jsonify({'success': False, 'error': 'No moves to analyze'}), 400
         
-        # Simplified analysis - in production, use full Stockfish evaluation
+        # Perform detailed analysis
         analysis = []
-        for i, move in enumerate(moves):
+        temp_gs = ChessEngine.GameState()
+        
+        for i, move_record in enumerate(moves):
+            # The position BEFORE the move
+            fen = ai_engine.board_to_fen(temp_gs)
+            eval_before = ai_engine.get_position_evaluation(fen)
+            
+            # The best move in that position
+            valid_moves = temp_gs.getValidMoves()
+            best_move_obj = ai_engine.findBestMove(temp_gs, valid_moves)
+            best_move_san = best_move_obj.getSAN(temp_gs, 0) if best_move_obj else None
+            
+            # Make the move to get evaluation AFTER
+            # We need to find the move object that matches move_record
+            move_found = False
+            for vm in valid_moves:
+                if vm.getSAN(temp_gs, 0) == move_record['notation']:
+                    temp_gs.makeMove(vm)
+                    move_found = True
+                    break
+            
+            if not move_found:
+                # Fallback if SAN doesn't match perfectly
+                break
+                
+            fen_after = ai_engine.board_to_fen(temp_gs)
+            eval_after = ai_engine.get_position_evaluation(fen_after)
+            
+            # Classify move based on eval change
+            classification = 'good'
+            if eval_before is not None and eval_after is not None:
+                # Simple classification logic
+                try:
+                    # Convert mate to high value
+                    eb = 100.0 if str(eval_before).startswith('M') else float(eval_before)
+                    ea = 100.0 if str(eval_after).startswith('M') else float(eval_after)
+                    
+                    diff = ea - eb if (i % 2 == 0) else eb - ea
+                    
+                    if diff > 0.5: classification = 'brilliant'
+                    elif diff > -0.2: classification = 'best'
+                    elif diff > -0.5: classification = 'good'
+                    elif diff > -1.0: classification = 'inaccuracy'
+                    elif diff > -2.0: classification = 'mistake'
+                    else: classification = 'blunder'
+                except:
+                    pass
+
             analysis.append({
                 'move_number': i + 1,
-                'notation': move['notation'],
-                'classification': 'good',  # Simplified
-                'evaluation': 0.0,
-                'best_move': None
+                'notation': move_record['notation'],
+                'classification': classification,
+                'evaluation': eval_after if eval_after is not None else 0.0,
+                'best_move': best_move_san
             })
         
         return jsonify({
@@ -680,6 +728,26 @@ def analyze_game(game_id):
         
     except Exception as e:
         print(f"Analysis error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/game/<game_id>/evaluate', methods=['GET'])
+def evaluate_position(game_id):
+    """Get real-time evaluation for current position"""
+    if game_id not in local_games:
+        return jsonify({'success': False, 'error': 'Game not found'}), 404
+    
+    try:
+        game = local_games[game_id]
+        gs = game['engine']
+        fen = ai_engine.board_to_fen(gs)
+        evaluation = ai_engine.get_position_evaluation(fen)
+        
+        return jsonify({
+            'success': True,
+            'evaluation': evaluation
+        })
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -975,7 +1043,7 @@ def handle_online_move(data):
                 
                 # Clear any pending draw offer when a move is made
                 if game_id in pending_draws:
-                    del pending_draws[game_id]
+                    pending_draws.pop(game_id, None)
                 
                 return
         
@@ -1056,7 +1124,7 @@ def handle_respond_draw(data):
         print(f"🤝 Game {game_id} ended by agreement")
     else:
         # Notify offerer that draw was declined
-        offerer_socket = user_sockets.get(offerer_id)
+        offerer_socket = user_sockets.get(int(offerer_id)) if offerer_id else None
         if offerer_socket:
             socketio.emit('draw_declined', {
                 'game_id': game_id,
@@ -1064,7 +1132,7 @@ def handle_respond_draw(data):
             }, room=offerer_socket)
     
     # Clear the offer
-    del pending_draws[game_id]
+    pending_draws.pop(game_id, None)
 
 
 @socketio.on('resign')
@@ -1149,12 +1217,13 @@ def handle_chat_message(data):
 
 
 if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
     print("\n" + "="*60)
     print("🎮 GrandMaster Chess - COMPLETE Platform")
-    print("📍 http://localhost:5000")
+    print(f"📍 http://0.0.0.0:{port}")
     print("🗄️  Database: SQLite (chess.db)")
     print("🔌 Socket.IO: Enabled")
     print("📧 Email Verification:", "Enabled" if EMAIL_ENABLED else "Disabled")
     print("="*60 + "\n")
     
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=True, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)

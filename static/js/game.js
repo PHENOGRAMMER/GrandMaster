@@ -1013,6 +1013,9 @@ function enterAnalysisMode() {
         updateNavigationButtons();
     }
 
+    const evalBar = document.getElementById('evaluation-bar');
+    if (evalBar) evalBar.style.display = 'flex';
+
     const analyzeBtn = document.getElementById('analyze-btn');
     if (analyzeBtn) {
         analyzeBtn.textContent = 'Exit Analysis';
@@ -1020,6 +1023,9 @@ function enterAnalysisMode() {
     }
 
     showToast('Use arrow keys or click moves to navigate');
+
+    // Trigger first eval
+    updateEvaluationBar(0);
 }
 
 function exitAnalysis() {
@@ -1028,6 +1034,9 @@ function exitAnalysis() {
 
     const controls = document.getElementById('analysis-controls');
     if (controls) controls.style.display = 'none';
+
+    const evalBar = document.getElementById('evaluation-bar');
+    if (evalBar) evalBar.style.display = 'none';
 
     const analyzeBtn = document.getElementById('analyze-btn');
     if (analyzeBtn) {
@@ -1094,11 +1103,72 @@ async function goToPosition(index) {
 
             // Show move analysis if available
             if (gameAnalysis && index > 0 && index <= gameAnalysis.length) {
-                showMoveAnalysis(gameAnalysis[index - 1]);
+                const stepAnalysis = gameAnalysis[index - 1];
+                showMoveAnalysis(stepAnalysis);
+                updateEvaluationBar(stepAnalysis.evaluation);
+            } else {
+                // Fetch real-time eval if not in analysis data
+                fetchRealTimeEval();
             }
         }
     } catch (error) {
         console.error('Error:', error);
+    }
+}
+
+async function fetchRealTimeEval() {
+    if (!isAnalysisMode) return;
+    try {
+        const response = await fetch(`/api/game/${gameId}/evaluate`);
+        const data = await response.json();
+        if (data.success) {
+            updateEvaluationBar(data.evaluation);
+        }
+    } catch (e) { }
+}
+
+function updateEvaluationBar(evaluation) {
+    const bar = document.getElementById('evaluation-bar');
+    const fill = document.getElementById('evaluation-fill');
+    const score = document.getElementById('evaluation-score');
+
+    if (!bar || !fill || !score) return;
+
+    let percent = 50;
+    let dispScore = "0.0";
+
+    if (evaluation !== undefined && evaluation !== null) {
+        if (typeof evaluation === 'string' && evaluation.startsWith('M')) {
+            // Mate
+            const val = parseInt(evaluation.substring(1));
+            percent = val > 0 ? 100 : 0;
+            dispScore = evaluation;
+        } else {
+            const ev = parseFloat(evaluation);
+            // Limit to +/- 10.0 for bar scaling
+            percent = 50 + (ev * 5);
+            percent = Math.min(Math.max(percent, 5), 95);
+            dispScore = Math.abs(ev).toFixed(1);
+            if (ev === 0) dispScore = "0.0";
+        }
+    }
+
+    fill.style.height = `${percent}%`;
+    score.textContent = dispScore;
+
+    // Adjust colors and position: White winning -> Bottom, Black winning -> Top
+    if (percent > 50) {
+        score.style.bottom = '10px';
+        score.style.top = 'auto';
+        score.style.color = '#1a1a1a';
+    } else if (percent < 50) {
+        score.style.top = '10px';
+        score.style.bottom = 'auto';
+        score.style.color = '#ffffff';
+    } else {
+        score.style.bottom = 'calc(50% - 10px)';
+        score.style.top = 'auto';
+        score.style.color = '#1a1a1a';
     }
 }
 
