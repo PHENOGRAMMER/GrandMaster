@@ -11,7 +11,6 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Flask](https://img.shields.io/badge/flask-3.0-green.svg)](https://flask.palletsprojects.com/)
 [![Socket.IO](https://img.shields.io/badge/socket.io-4.0-orange.svg)](https://socket.io/)
-[![Live Demo](https://img.shields.io/badge/🎮_Live_Demo-Play_Now-success?style=for-the-badge)](https://grandmaster-tj4w.onrender.com)
 
 
 [![Live Demo](https://img.shields.io/badge/🎮_Live_Demo-Play_Now-success?style=for-the-badge)](https://grandmaster-tj4w.onrender.com)
