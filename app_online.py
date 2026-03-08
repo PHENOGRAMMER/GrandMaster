@@ -11,6 +11,9 @@ from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_mail import Mail, Message
+import threading
+import time
+import requests
 import ChessEngine
 import smartMoveFinder as ai_engine
 import uuid
@@ -85,6 +88,28 @@ if EMAIL_ENABLED:
     print("✅ Email verification enabled")
 else:
     print("⚠️ Email not configured - verification disabled")
+
+
+# Keep Alive Thread for Render
+def keep_alive():
+    """Background thread that pings the server to prevent idling."""
+    time.sleep(20) # Wait for server to start
+    print("🚀 Self-ping keep-alive thread started")
+    while True:
+        try:
+            # Ping the health route every 10 minutes
+            requests.get("https://grandmaster-tj4w.onrender.com/health")
+        except Exception as e:
+            print(f"Keep-alive ping failed: {e}")
+        time.sleep(600)
+
+threading.Thread(target=keep_alive, daemon=True).start()
+
+
+@app.route("/health")
+def health():
+    """Service health check endpoint."""
+    return {"status": "ok"}
 
 
 @login_manager.user_loader
