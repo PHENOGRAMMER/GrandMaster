@@ -1139,15 +1139,25 @@ function updateEvaluationBar(evaluation) {
 
     if (evaluation !== undefined && evaluation !== null) {
         if (typeof evaluation === 'string' && evaluation.startsWith('M')) {
-            // Mate
+            // Mate: M1, M2, M-1, M-2, M1000 (Win), M-1000 (Loss)
             const val = parseInt(evaluation.substring(1));
-            percent = val > 0 ? 100 : 0;
-            dispScore = evaluation;
+            const isNegative = evaluation.indexOf('-') !== -1;
+
+            percent = (val > 0 && !isNegative) ? 100 : 0;
+
+            // Clean display score: use "#" for absolute win/loss
+            if (Math.abs(val) >= 1000) {
+                dispScore = "#";
+            } else {
+                dispScore = evaluation;
+            }
         } else {
             const ev = parseFloat(evaluation);
-            // Limit to +/- 10.0 for bar scaling
-            percent = 50 + (ev * 5);
-            percent = Math.min(Math.max(percent, 5), 95);
+            // More sensitive scaling: +/- 2.5 pawns fills/empties the bar significantly
+            // Chess.com style sensitivity
+            percent = 50 + (ev * 15);
+            percent = Math.min(Math.max(percent, 2), 98);
+
             dispScore = Math.abs(ev).toFixed(1);
             if (ev === 0) dispScore = "0.0";
         }
@@ -1176,14 +1186,21 @@ function showMoveAnalysis(analysis) {
     const indicator = document.getElementById('turn-indicator');
     if (!indicator) return;
 
-    const evalText = analysis.evaluation !== undefined
-        ? `Eval: ${analysis.evaluation > 0 ? '+' : ''}${analysis.evaluation.toFixed(2)}`
-        : '';
+    let evalDisplay = '';
+    if (analysis.evaluation !== undefined && analysis.evaluation !== null) {
+        const ev = analysis.evaluation;
+        if (typeof ev === 'string' && ev.startsWith('M')) {
+            evalDisplay = `Eval: ${ev}`;
+        } else {
+            const numEv = parseFloat(ev);
+            evalDisplay = `Eval: ${numEv > 0 ? '+' : ''}${numEv.toFixed(2)}`;
+        }
+    }
 
     const classText = analysis.classification.charAt(0).toUpperCase() +
         analysis.classification.slice(1);
 
-    indicator.textContent = `Move ${currentMoveIndex}: ${classText} ${evalText}`;
+    indicator.textContent = `Move ${currentMoveIndex}: ${classText} ${evalDisplay}`;
 
     if (analysis.best_move) {
         indicator.textContent += ` (Best: ${analysis.best_move})`;

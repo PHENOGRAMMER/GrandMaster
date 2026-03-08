@@ -696,30 +696,42 @@ def analyze_game(game_id):
             # Classify move based on eval change
             classification = 'good'
             if eval_before is not None and eval_after is not None:
-                # Simple classification logic
                 try:
-                    # Convert mate to high value
-                    eb = 100.0 if str(eval_before).startswith('M') else float(eval_before)
-                    ea = 100.0 if str(eval_after).startswith('M') else float(eval_after)
+                    def parse_val(v):
+                        vs = str(v)
+                        if 'M' in vs:
+                            try:
+                                # Extract number from something like "M1" or "M-1"
+                                m_val_str = vs.replace('M', '')
+                                m_val = int(m_val_str)
+                                return 1000.0 if m_val > 0 else -1000.0
+                            except:
+                                return 1000.0
+                        try:
+                            return float(v)
+                        except:
+                            return 0.0
                     
+                    eb = parse_val(eval_before)
+                    ea = parse_val(eval_after)
                     diff = ea - eb
                     
                     if i % 2 == 0: # White's move
                         if diff > 0.8: classification = 'brilliant'
                         elif diff > -0.1: classification = 'best'
-                        elif diff > -0.4: classification = 'good'
-                        elif diff > -1.0: classification = 'inaccuracy'
-                        elif diff > -2.0: classification = 'mistake'
+                        elif diff > -0.5: classification = 'good'
+                        elif diff > -1.2: classification = 'inaccuracy'
+                        elif diff > -2.5: classification = 'mistake'
                         else: classification = 'blunder'
                     else: # Black's move
                         if diff < -0.8: classification = 'brilliant'
                         elif diff < 0.1: classification = 'best'
-                        elif diff < 0.4: classification = 'good'
-                        elif diff < 1.0: classification = 'inaccuracy'
-                        elif diff < 2.0: classification = 'mistake'
+                        elif diff < 0.5: classification = 'good'
+                        elif diff < 1.2: classification = 'inaccuracy'
+                        elif diff < 2.5: classification = 'mistake'
                         else: classification = 'blunder'
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Classification error at move {i}: {e}")
 
             analysis.append({
                 'move_number': i + 1,
@@ -1132,7 +1144,8 @@ def handle_respond_draw(data):
         print(f"🤝 Game {game_id} ended by agreement")
     else:
         # Notify offerer that draw was declined
-        offerer_socket = user_sockets.get(int(offerer_id)) if offerer_id else None
+        offerer_id_int = int(offerer_id) if offerer_id else 0
+        offerer_socket = user_sockets.get(offerer_id_int)
         if offerer_socket:
             socketio.emit('draw_declined', {
                 'game_id': game_id,

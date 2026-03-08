@@ -506,17 +506,28 @@ def get_position_evaluation(fen):
         
         # Determine if it's Black's turn from FEN
         parts = fen.split()
-        # Side to move is the second element (index 1)
         is_white_to_move = len(parts) > 1 and parts[1] == 'w'
         
-        if not is_white_to_move:
-            if isinstance(ev, str) and ev.startswith('M'):
-                # Handle Mate strings like 'M8' or 'M-8'
-                # val will be positive if Black has mate, negative if White has mate
-                val = int(ev[1:])
-                return f"M{-val}"
-            return -ev
-        return ev
+        # Extract numerical value
+        if isinstance(ev, str) and ev.startswith('M'):
+            val = int(ev[1:])
+            
+            # Stockfish perspective is always side-to-move
+            # M0 = already mate. If Black to move, and M0, then White won.
+            # M1 = side-to-move has mate in 1.
+            
+            if not is_white_to_move:
+                # Black to move
+                if val == 0: return "M1000" # Already mate, White wins
+                return f"M{-val}" # Flip perspective
+            else:
+                # White to move
+                if val == 0: return "M-1000" # Already mate, Black wins
+                return f"M{val}"
+        else:
+            # Centipawns case
+            return -ev if not is_white_to_move else ev
+            
     return None
 
 
