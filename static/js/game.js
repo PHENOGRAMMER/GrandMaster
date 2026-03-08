@@ -696,13 +696,6 @@ function startOnlineGame(data) {
 }
 
 function sendOnlineMove(from, to, promotion = 'Q') {
-    // Apply local increment for better UX
-    if (clocksEnabled && currentIncrement > 0) {
-        if (isWhiteTurn) whiteTime += currentIncrement;
-        else blackTime += currentIncrement;
-        updateClockDisplay();
-    }
-
     socket.emit('online_move', {
         game_id: gameId,
         move: { from, to, promotion }
