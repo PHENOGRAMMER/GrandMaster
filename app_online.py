@@ -11,6 +11,7 @@ from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_mail import Mail, Message
+import resend
 import threading
 import time
 import requests
@@ -44,13 +45,9 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Email Configuration (Gmail)
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@grandmaster.com')
+# Email Configuration (Resend)
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+resend.api_key = RESEND_API_KEY
 
 # Session Configuration
 app.config['SESSION_COOKIE_SECURE'] = False  # Set True in production with HTTPS
@@ -83,9 +80,9 @@ user_sockets = {}
 pending_draws = {} # Track active draw offers: {game_id: player_id_who_offered}
 
 # Check if email is configured
-EMAIL_ENABLED = bool(app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD'])
+EMAIL_ENABLED = bool(RESEND_API_KEY)
 if EMAIL_ENABLED:
-    print("✅ Email verification enabled")
+    print("✅ Email verification enabled (Resend)")
 else:
     print("⚠️ Email not configured - verification disabled")
 
@@ -105,52 +102,18 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-def send_async_email(app, msg, email):
-    with app.app_context():
-        try:
-            mail.send(msg)
-            print(f"✅ Verification email sent to {email}")
-        except Exception as e:
-            print(f"❌ Email send async failed: {e}")
-
-import threading
-
-
-def send_async_email(app_ctx, msg, email):
-    with app_ctx:
-        try:
-            mail.send(msg)
-            print(f"✅ Verification email sent to {email}")
-        except Exception as e:
-            print(f"❌ Email send async failed: {e}")
-
-
 def send_verification_email(user, code):
-    """Send verification code via email"""
-    if not current_app.config.get('MAIL_USERNAME'):
-        print("⚠️ Email not configured - verification disabled")
+    """Send verification code via Resend"""
+    if not RESEND_API_KEY:
+        print("⚠️ Resend not configured - verification disabled")
         return False
     
     try:
-        msg = Message(
-            subject="GrandMaster Chess - Verify your email",
-            recipients=[user.email],
-            sender=app.config['MAIL_DEFAULT_SENDER']
-        )
-        
-        msg.body = f'''Welcome to GrandMaster Chess!
-
-Your verification code is: {code}
-
-This code will expire in 15 minutes.
-
-If you didn't create this account, please ignore this email.
-
-Happy playing!
-- GrandMaster Chess Team
-'''
-        
-        msg.html = f'''
+        params = {
+            "from": "GrandMaster Chess <onboarding@resend.dev>",
+            "to": [user.email],
+            "subject": "GrandMaster Chess - Verify your email",
+            "html": f'''
 <html>
 <body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
     <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -178,15 +141,14 @@ Happy playing!
 </body>
 </html>
 '''
+        }
         
-        # Send in background thread so we don't block the request
-        ctx = app.app_context()
-        t = threading.Thread(target=send_async_email, args=(ctx, msg, user.email))
-        t.daemon = True
-        t.start()
+        email_response = resend.Emails.send(params)
+        print(f"✅ Verification email sent to {user.email} (ID: {email_response['id']})")
         return True
+        
     except Exception as e:
-        print(f"❌ Email preparation failed: {e}")
+        print(f"❌ Resend error: {e}")
         return False
 
 
