@@ -45,8 +45,8 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Email Configuration (Resend)
-RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
-resend.api_key = RESEND_API_KEY
+# RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+# resend.api_key = RESEND_API_KEY
 
 # Session Configuration
 app.config['SESSION_COOKIE_SECURE'] = False  # Set True in production with HTTPS
