@@ -80,11 +80,8 @@ user_sockets = {}
 pending_draws = {} # Track active draw offers: {game_id: player_id_who_offered}
 
 # Check if email is configured
-EMAIL_ENABLED = bool(RESEND_API_KEY)
-if EMAIL_ENABLED:
-    print("✅ Email verification enabled (Resend)")
-else:
-    print("⚠️ Email not configured - verification disabled")
+EMAIL_ENABLED = False  # Disabled for MVP - focusing on core features
+print("ℹ️  Email verification disabled - using simple auth")
 
 
 # Keep Alive Thread for Render
@@ -203,15 +200,10 @@ def register():
         # Create user
         user = User(username=username, email=email)
         user.set_password(password)
-        
-        # Generate verification code
-        code = user.generate_verification_code()
+        user.email_verified = True  # Auto-verify for MVP
         
         db.session.add(user)
         db.session.commit()
-        
-        # Send email
-        email_sent = send_verification_email(user, code)
         
         # Auto-login
         login_user(user, remember=True)
@@ -219,9 +211,7 @@ def register():
         return jsonify({
             'success': True,
             'user': user.to_dict(),
-            'message': 'Account created! Please verify your email.' if email_sent else 'Account created!',
-            'email_sent': email_sent,
-            'verification_required': not user.email_verified
+            'message': 'Account created! Welcome to GrandMaster Chess!'
         })
         
     except Exception as e:
@@ -806,9 +796,10 @@ def handle_join_queue(data):
         emit('error', {'message': 'Not authenticated'})
         return
     
-    if not current_user.email_verified:
-        emit('error', {'message': 'Please verify your email to play online'})
-        return
+    # Email check disabled for MVP
+    # if not current_user.email_verified:
+    #     emit('error', {'message': 'Please verify your email to play online'})
+    #     return
     
     try:
         time_control = data.get('time_control', '10+0')
