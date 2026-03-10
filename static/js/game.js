@@ -1134,52 +1134,63 @@ function updateEvaluationBar(evaluation) {
 
     if (!bar || !fill || !score) return;
 
-    let percent = 50;
+    let percent = 50; // White's percentage of the bar by default
     let dispScore = "0.0";
 
     if (evaluation !== undefined && evaluation !== null) {
         if (typeof evaluation === 'string' && evaluation.startsWith('M')) {
-            // Mate: M1, M2, M-1, M-2, M1000 (Win), M-1000 (Loss)
             const val = parseInt(evaluation.substring(1));
-            const isNegative = evaluation.indexOf('-') !== -1;
-
-            percent = (val > 0 && !isNegative) ? 100 : 0;
-
-            // Clean display score: use "#" for absolute win/loss
-            if (Math.abs(val) >= 1000) {
-                dispScore = "#";
-            } else {
-                dispScore = evaluation;
-            }
+            // M1 -> 100%, M-1 -> 0%
+            percent = (val > 0) ? 100 : 0;
+            dispScore = Math.abs(val) >= 1000 ? "#" : evaluation;
         } else {
             const ev = parseFloat(evaluation);
-            // More sensitive scaling: +/- 2.5 pawns fills/empties the bar significantly
-            // Chess.com style sensitivity
+            // ev > 0 is White advantage
             percent = 50 + (ev * 15);
             percent = Math.min(Math.max(percent, 2), 98);
-
             dispScore = Math.abs(ev).toFixed(1);
             if (ev === 0) dispScore = "0.0";
         }
     }
 
-    fill.style.height = `${percent}%`;
-    score.textContent = dispScore;
-
-    // Adjust colors and position: White winning -> Bottom, Black winning -> Top
-    if (percent > 50) {
-        score.style.bottom = '10px';
-        score.style.top = 'auto';
-        score.style.color = '#1a1a1a';
-    } else if (percent < 50) {
-        score.style.top = '10px';
-        score.style.bottom = 'auto';
-        score.style.color = '#ffffff';
+    // Handle board flip: UI bar should grow from bottom player's perspective
+    if (boardFlipped) {
+        // Black is at bottom. Bar percent represents White.
+        // We want to show Black's advantage at the bottom.
+        let blackPercent = 100 - percent;
+        fill.style.height = `${blackPercent}%`;
+        fill.style.background = 'linear-gradient(to bottom, #1a1a1a, #2a2a2a)'; // Dark fill
+        bar.style.backgroundColor = '#f0f0f0'; // White background
+        
+        // Position score
+        if (blackPercent > 50) {
+            score.style.bottom = '10px';
+            score.style.top = 'auto';
+            score.style.color = '#ffffff';
+        } else {
+            score.style.top = '10px';
+            score.style.bottom = 'auto';
+            score.style.color = '#1a1a1a';
+        }
     } else {
-        score.style.bottom = 'calc(50% - 10px)';
-        score.style.top = 'auto';
-        score.style.color = '#1a1a1a';
+        // White is at bottom. 
+        fill.style.height = `${percent}%`;
+        fill.style.background = 'linear-gradient(to bottom, #f0f0f0, #d0d0d0)'; // White fill
+        bar.style.backgroundColor = '#262421'; // Dark background
+        
+        // Position score
+        if (percent > 50) {
+            score.style.bottom = '10px';
+            score.style.top = 'auto';
+            score.style.color = '#1a1a1a';
+        } else {
+            score.style.top = '10px';
+            score.style.bottom = 'auto';
+            score.style.color = '#ffffff';
+        }
     }
+
+    score.textContent = dispScore;
 }
 
 function showMoveAnalysis(analysis) {

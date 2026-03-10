@@ -8,6 +8,7 @@ Smart Move Finder with Hybrid Stockfish Engine
 import random
 import subprocess
 import os
+import time
 from pathlib import Path
 
 # Try to import stockfish library (for local use)
@@ -146,111 +147,104 @@ class StockfishEngine:
             return None
 
     def get_evaluation(self, fen):
-        """Get position evaluation"""
-        if not self.enabled:
+        """Get position evaluation from local Stockfish in Absolute White Perspective."""
+        if not self.enabled or self.stockfish is None:
             return None
 
         try:
             self.stockfish.set_fen_position(fen)
             eval_dict = self.stockfish.get_evaluation()
-
+            
+            # Stockfish returns score relative to side-to-move (+ is winning for them)
+            # FEN example: "rnb... w ..." (white to move)
+            is_white_to_move = ' w ' in fen
+            
+            val = eval_dict['value']
+            # If Black to move and they are winning (val > 0), make it negative (White perspective)
+            # If White to move and they are winning (val > 0), keep it positive
+            if not is_white_to_move:
+                val = -val
+                
             if eval_dict['type'] == 'cp':
-                return eval_dict['value'] / 100.0  # Convert centipawns to pawns
+                # Return in logical unit (pawns)
+                return val / 100.0
             elif eval_dict['type'] == 'mate':
-                return f"M{eval_dict['value']}"
+                # Return standardized "MX" string
+                return f"M{val}"
 
         except Exception as e:
-            print(f"Evaluation error: {e}")
+            print(f"Local Eval Error: {e}")
             return None
 
 
 class CloudStockfish:
-    """
-    Cloud Stockfish using Lichess Free API
-    No authentication needed, works everywhere!
-    """
+    """Cloud Stockfish using Lichess Free API with Caching and Rate Limiting"""
     
     def __init__(self, skill_level=15, depth=18):
         self.enabled = REQUESTS_AVAILABLE
         self.skill_level = skill_level
-        self.depth = min(depth, 20)  # Lichess max is 20
+        self.depth = min(depth, 20)
         self.base_url = "https://lichess.org/api/cloud-eval"
         
+        # Caching & Throttling
+        self.cache = {}
+        self.last_request_time = 0
+        self.min_interval = 1.0  # Respect Lichess free tier
+        
         if self.enabled:
-            print(f"✅ Cloud Stockfish initialized (Skill: {skill_level}/20, Depth: {self.depth})")
+            print(f"✅ Cloud Stockfish ready (Skill: {skill_level}, Depth: {self.depth})")
         else:
             print("⚠️ Cloud Stockfish unavailable (install requests: pip install requests)")
     
+    def _wait_for_api(self):
+        current = time.time()
+        elapsed = current - self.last_request_time
+        if elapsed < self.min_interval:
+            import time as pytime
+            pytime.sleep(self.min_interval - elapsed)
+        self.last_request_time = time.time()
+
     def get_best_move(self, fen):
-        """Get best move from Lichess cloud"""
-        if not self.enabled:
-            return None
-            
+        if not self.enabled: return None
+        
+        cache_key = f"best_{fen}"
+        if cache_key in self.cache: return self.cache[cache_key]
+        
+        self._wait_for_api()
         try:
-            params = {
-                'fen': fen,
-                'multiPv': 1
-            }
-            
-            response = requests.get(
-                self.base_url,
-                params=params,
-                timeout=5
-            )
-            
+            response = requests.get(self.base_url, params={'fen': fen, 'multiPv': 1}, timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                
-                if 'pvs' in data and len(data['pvs']) > 0:
-                    pv = data['pvs'][0]
-                    if 'moves' in pv and pv['moves']:
-                        best_move = pv['moves'].split()[0]
-                        print(f"🌐 Cloud Stockfish: {best_move}")
-                        return best_move
-                
-                return None
-                
-            elif response.status_code == 429:
-                print("⚠️ Cloud API rate limit")
-                return None
-            else:
-                return None
-                
-        except requests.exceptions.Timeout:
-            print("⚠️ Cloud API timeout")
+                if 'pvs' in data and data['pvs']:
+                    move = data['pvs'][0]['moves'].split()[0]
+                    self.cache[cache_key] = move
+                    return move
             return None
-        except Exception:
-            return None
+        except: return None
     
     def get_evaluation(self, fen):
-        """Get position evaluation from cloud"""
-        if not self.enabled:
-            return None
-            
+        """Lichess API returns Absolute White Perspective already."""
+        if not self.enabled: return None
+        
+        cache_key = f"eval_{fen}"
+        if cache_key in self.cache: return self.cache[cache_key]
+        
+        self._wait_for_api()
         try:
-            params = {
-                'fen': fen,
-                'multiPv': 1
-            }
-            
-            response = requests.get(
-                self.base_url,
-                params=params,
-                timeout=5
-            )
-            
+            response = requests.get(self.base_url, params={'fen': fen, 'multiPv': 1}, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 
-                if 'pvs' in data and len(data['pvs']) > 0:
+                if 'pvs' in data and data['pvs']:
                     pv = data['pvs'][0]
-                    if 'cp' in pv:
-                        return pv['cp'] / 100.0
-                    elif 'mate' in pv:
-                        return f"M{pv['mate']}"
-                
-                return None
-                
+                    res = None
+                    if 'cp' in pv: res = pv['cp'] / 100.0
+                    elif 'mate' in pv: res = f"M{pv['mate']}"
+                    
+                    if res is not None:
+                        self.cache[cache_key] = res
+                        return res
+            return None
         except Exception:
             return None
     
@@ -498,35 +492,15 @@ def set_skill_level(skill_level):
 
 
 def get_position_evaluation(fen):
-    """Get position evaluation (centipawns) - Absolute from White perspective."""
+    """
+    Get position evaluation.
+    Engines are expected to return Absolute White Perspective (+ is White winning).
+    """
     global _stockfish_engine
     if _stockfish_engine and _stockfish_engine.mode != 'none':
         ev = _stockfish_engine.get_evaluation(fen)
-        if ev is None: return None
-        
-        # Determine if it's Black's turn from FEN
-        parts = fen.split()
-        is_white_to_move = len(parts) > 1 and parts[1] == 'w'
-        
-        # Extract numerical value
-        if isinstance(ev, str) and ev.startswith('M'):
-            val = int(ev[1:])
-            
-            # Stockfish perspective is always side-to-move
-            # M0 = already mate. If Black to move, and M0, then White won.
-            # M1 = side-to-move has mate in 1.
-            
-            if not is_white_to_move:
-                # Black to move
-                if val == 0: return "M1000" # Already mate, White wins
-                return f"M{-val}" # Flip perspective
-            else:
-                # White to move
-                if val == 0: return "M-1000" # Already mate, Black wins
-                return f"M{val}"
-        else:
-            # Centipawns case
-            return -ev if not is_white_to_move else ev
+        # Already absolute from engine, just pass through
+        return ev
             
     return None
 

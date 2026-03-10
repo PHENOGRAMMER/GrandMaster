@@ -74,6 +74,8 @@ else:
 
 # In-memory storage
 local_games = {}
+game_analyses = {} # Cache for completed game reviews
+analyzing_games = set() # Track games currently being analyzed to prevent redundancy
 socket_sessions = {}
 user_sockets = {}
 pending_draws = {} # Track active draw offers: {game_id: player_id_who_offered}
@@ -615,95 +617,109 @@ def get_position(game_id, index):
 
 @app.route('/api/game/<game_id>/analyze', methods=['POST'])
 def analyze_game(game_id):
-    """Analyze completed game with Stockfish"""
+    """Analyze completed game with Stockfish - synced to prevent redundancy"""
     if game_id not in local_games:
         return jsonify({'success': False, 'error': 'Game not found'}), 404
+    
+    # 1. Return cached results immediately if available
+    if game_id in game_analyses:
+        print(f"📋 Returning cached analysis for {game_id}")
+        return jsonify({'success': True, 'analysis': game_analyses[game_id]})
+    
+    # 2. If already being analyzed by another request, wait for it
+    if game_id in analyzing_games:
+        print(f"⏳ Game {game_id} already being analyzed, waiting for result...")
+        max_retries = 120 # Wait up to 60 seconds
+        for _ in range(max_retries):
+            eventlet.sleep(0.5)
+            if game_id in game_analyses:
+                return jsonify({'success': True, 'analysis': game_analyses[game_id]})
+        return jsonify({'success': False, 'error': 'Analysis timeout (took too long)'}), 504
+
+    # 3. Start new analysis and mark as active
+    analyzing_games.add(game_id)
     
     try:
         game = local_games[game_id]
         moves = game.get('moves', [])
-        positions = game.get('positions', [])
         
         if len(moves) == 0:
             return jsonify({'success': False, 'error': 'No moves to analyze'}), 400
         
-        # Perform detailed analysis
         analysis = []
         temp_gs = ChessEngine.GameState()
         
+        print(f"🧠 Starting deep analysis for game {game_id} ({len(moves)} moves)")
+        
         for i, move_record in enumerate(moves):
-            # The position BEFORE the move
+            # Pos before
             fen = ai_engine.board_to_fen(temp_gs)
             eval_before = ai_engine.get_position_evaluation(fen)
             
-            # The best move in that position
+            # Best move in that pos
             valid_moves = temp_gs.getValidMoves()
             best_move_obj = ai_engine.findBestMove(temp_gs, valid_moves)
             best_move_san = best_move_obj.getSAN(temp_gs, 0) if best_move_obj else None
             
-            # Make the move to get evaluation AFTER
-            # We need to find the move object that matches move_record
+            # Make the move
+            from_notation = move_record['notation']
             move_found = False
             for vm in valid_moves:
-                if vm.getSAN(temp_gs, 0) == move_record['notation']:
+                if vm.getSAN(temp_gs, 0) == from_notation:
                     temp_gs.makeMove(vm)
                     move_found = True
                     break
             
             if not move_found:
-                # Fallback if SAN doesn't match perfectly
                 break
                 
             fen_after = ai_engine.board_to_fen(temp_gs)
             eval_after = ai_engine.get_position_evaluation(fen_after)
             
-            # Classify move based on eval change
+            # Classification logic
             classification = 'good'
             if eval_before is not None and eval_after is not None:
                 try:
                     def parse_val(v):
                         vs = str(v)
                         if 'M' in vs:
-                            try:
-                                # Extract number from something like "M1" or "M-1"
-                                m_val_str = vs.replace('M', '')
-                                m_val = int(m_val_str)
-                                return 1000.0 if m_val > 0 else -1000.0
-                            except:
-                                return 1000.0
-                        try:
-                            return float(v)
-                        except:
-                            return 0.0
+                            m_val_str = vs.replace('M', '')
+                            m_val = int(m_val_str) if m_val_str else 0
+                            return 1000.0 if m_val >= 0 else -1000.0
+                        try: return float(v)
+                        except: return 0.0
                     
                     eb = parse_val(eval_before)
                     ea = parse_val(eval_after)
                     diff = ea - eb
                     
-                    if i % 2 == 0: # White's move
+                    if i % 2 == 0: # White
                         if diff > 0.8: classification = 'brilliant'
                         elif diff > -0.1: classification = 'best'
                         elif diff > -0.5: classification = 'good'
                         elif diff > -1.2: classification = 'inaccuracy'
                         elif diff > -2.5: classification = 'mistake'
                         else: classification = 'blunder'
-                    else: # Black's move
+                    else: # Black
                         if diff < -0.8: classification = 'brilliant'
                         elif diff < 0.1: classification = 'best'
                         elif diff < 0.5: classification = 'good'
                         elif diff < 1.2: classification = 'inaccuracy'
                         elif diff < 2.5: classification = 'mistake'
                         else: classification = 'blunder'
-                except Exception as e:
-                    print(f"Classification error at move {i}: {e}")
+                except: pass
 
             analysis.append({
                 'move_number': i + 1,
-                'notation': move_record['notation'],
+                'notation': from_notation,
                 'classification': classification,
                 'evaluation': eval_after if eval_after is not None else 0.0,
                 'best_move': best_move_san
             })
+        
+        # Cache and return
+        game_analyses[game_id] = analysis
+        print(f"✅ Analysis complete for game {game_id}")
         
         return jsonify({
             'success': True,
@@ -711,8 +727,12 @@ def analyze_game(game_id):
         })
         
     except Exception as e:
-        print(f"Analysis error: {e}")
+        print(f"❌ Analysis error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        # Always remove from analyzing set
+        if game_id in analyzing_games:
+            analyzing_games.remove(game_id)
 
 
 @app.route('/api/game/<game_id>/evaluate', methods=['GET'])
