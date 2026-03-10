@@ -18,18 +18,31 @@ class CloudStockfish:
         self.skill_level = skill_level
         self.depth = min(depth, 20)  # Lichess max is 20
         self.base_url = "https://lichess.org/api/cloud-eval"
+        self.last_request_time = 0
+        self.min_request_interval = 1.0  # 1 second between requests
+        self.cache = {}  # Simple position cache
         print(f"✅ Cloud Stockfish initialized (Skill: {skill_level}/20, Depth: {self.depth})")
-    
-    def get_best_move(self, fen: str) -> Optional[str]:
-        """
-        Get best move for position using Lichess cloud
+
+    def _wait_for_rate_limit(self):
+        """Ensure we don't exceed rate limits"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
         
-        Args:
-            fen: FEN string of current position
-            
-        Returns:
-            UCI move string (e.g., "e2e4") or None
-        """
+        if time_since_last < self.min_request_interval:
+            time.sleep(self.min_request_interval - time_since_last)
+        
+        self.last_request_time = time.time()
+
+    def get_best_move(self, fen: str) -> Optional[str]:
+        """Get best move with caching and rate limiting"""
+        # Check cache first
+        cache_key = f"move_{fen}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        # Wait to respect rate limits
+        self._wait_for_rate_limit()
+
         try:
             # Query Lichess cloud evaluation
             params = {
@@ -50,40 +63,35 @@ class CloudStockfish:
                 if 'pvs' in data and len(data['pvs']) > 0:
                     pv = data['pvs'][0]
                     if 'moves' in pv and pv['moves']:
-                        # First move in PV is the best move
                         best_move = pv['moves'].split()[0]
                         print(f"🌐 Cloud Stockfish: {best_move}")
+                        # Cache the result
+                        self.cache[cache_key] = best_move
                         return best_move
                 
-                # If not in cloud, analyze locally (fallback to random for now)
-                print("⚠️ Position not in cloud database, using local analysis")
+                print("⚠️ Position not in cloud database")
                 return None
                 
             elif response.status_code == 429:
-                print("⚠️ Cloud API rate limit, waiting...")
-                time.sleep(1)
+                print("⚠️ Cloud API rate limit reached")
                 return None
             else:
-                print(f"⚠️ Cloud API error: {response.status_code}")
                 return None
                 
-        except requests.exceptions.Timeout:
-            print("⚠️ Cloud API timeout")
-            return None
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"⚠️ Cloud API error: {e}")
             return None
-        except Exception as e:
-            print(f"⚠️ Unexpected error: {e}")
-            return None
-    
+
     def get_evaluation(self, fen: str) -> Optional[float]:
-        """
-        Get position evaluation
-        
-        Returns:
-            Evaluation in centipawns (positive = white advantage)
-        """
+        """Get position evaluation with caching and rate limiting"""
+        # Check cache first
+        cache_key = f"eval_{fen}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        # Wait to respect rate limits
+        self._wait_for_rate_limit()
+
         try:
             params = {
                 'fen': fen,
@@ -101,14 +109,18 @@ class CloudStockfish:
                 
                 if 'pvs' in data and len(data['pvs']) > 0:
                     pv = data['pvs'][0]
+                    eval_val = None
                     if 'cp' in pv:
-                        # Centipawns
-                        return pv['cp'] / 100.0
+                        eval_val = pv['cp'] / 100.0
                     elif 'mate' in pv:
-                        # Mate in X moves
-                        return f"M{pv['mate']}"
+                        eval_val = f"M{pv['mate']}"
+                    
+                    if eval_val is not None:
+                        self.cache[cache_key] = eval_val
+                        return eval_val
                 
                 return None
+            return None
                 
         except Exception as e:
             print(f"Evaluation error: {e}")
