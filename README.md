@@ -3,7 +3,7 @@
 <div align="center">
 
 ### A Professional Full-Stack Real-Time Multiplayer Chess Platform
-**Built with Flask, Socket.IO, and Stockfish Engine**
+**Built with Flask, Socket.IO, and Dual-Engine Analysis**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -21,26 +21,26 @@
 ---
 
 ## 🎯 About
-**GrandMaster Chess** is a modern, high-performance chess platform featuring a **professional analysis engine**, real-time multiplayer, and a sleek glassmorphism UI. It provides a chess.com-level experience with deep engine insights and smooth, responsive gameplay across all devices.
+**GrandMaster Chess** is a modern, high-performance chess platform featuring a **state-of-the-art analysis engine**, real-time multiplayer, and a premium glassmorphism UI. Designed for serious players, it delivers deep engine insights, sub-second move synchronization, and professional UX across all devices.
 
 ### 🌟 Key Highlights:
-*   **📊 Pro Analysis Mode:** Features a real-time **Evaluation Bar** and **Move Classification** (Brilliant ‼, Great ✓, Blunder ??).
-*   **📱 Mobile-First UI:** Fully responsive design with touch gestures, drag-and-drop support, and smooth piece animations.
-*   **⚡ Real-time Multiplayer:** Instant sub-second synchronization and live chat using WebSockets and Eventlet.
-*   **🤖 Hybrid Stockfish AI:** Intelligent engine layer that uses local binaries (dev) and Cloud API (prod) with 20 difficulty levels.
-*   **🏁 Full Rule Compliance:** Complete implementation of FIDE rules including Castling, En Passant, and complex draw detection.
+*   **📊 Pro Analysis Engine:** Features a real-time **Dynamic Evaluation Bar** that automatically reorients to the player's perspective. Includes instant **Move Classification** (Brilliant ‼, Great ✓, Blunder ??).
+*   **⚡ Synced Multi-User Analysis:** Intelligent server-side caching and request synchronization to prevent redundant analysis when multiple players review the same match.
+*   **📱 Mobile-First Glassmorphism:** Fully responsive design with touch gestures, adaptive board scaling, and 60fps piece animations.
+*   **🤖 Hybrid Stockfish AI:** Intelligent engine layer that uses highly optimized local binaries (dev) and rate-limited Cloud APIs (prod) with 20 difficulty levels.
+*   **🚀 Cloud Optimized:** Features a background keep-alive mechanism and request throttling to ensure 99.9% uptime and API compliance on platforms like Render.
 
 ---
 
 ## ✨ Features
 
-### 🎮 Versatile Game Modes
+### 🎮 Game Modes
 | Mode | Description |
 | :--- | :--- |
 | **Online Multiplayer** | Compete globally with real-time matchmaking and professional ELO tracking. |
-| **Advanced Analysis** | Review your games with an engine-powered **Evaluation Bar** and move-by-move quality insights. |
-| **Player vs AI** | Challenge Stockfish with levels ranging from "Beginner" to "Super Grandmaster". |
-| **Local PvP** | Perfect for over-the-board play on a single tablet or laptop. |
+| **Professional Review** | Analyze finished games with a synced **Evaluation Bar** and move-by-move quality insights. |
+| **Player vs AI** | Challenge Stockfish with levels ranging from "Casual" to "Master". |
+| **Local PvP** | Optimized for over-the-board play on mobile and desktop. |
 
 ### ⚡ Core Capabilities
 <table>
@@ -48,20 +48,20 @@
 <td width="50%">
 <strong>🧠 Game Analysis</strong>
 <br><br>
-• Professional Visual Evaluation Bar<br>
+• Orientation-Aware Evaluation Bar (+/- Perspective)<br>
 • Move Quality Classification (Brilliant to Blunder)<br>
-• Best Move hints and engine suggestions<br>
+• Intelligent Multi-User Analysis Syncing<br>
 • Real-time centipawn & mate assessment<br>
-• Interactive move-history navigation
+• Best Move hints and cached engine results
 </td>
 <td width="50%">
 <strong>🌐 Online Experience</strong>
 <br><br>
-• Lag-compensated WebSocket synchronization<br>
+• Ultra-low latency WebSocket synchronization<br>
 • Matchmaking based on ELO (±200 rating range)<br>
-• Integrated chat and secure player profiles<br>
+• Integrated live chat and secure profiles<br>
 • Live clocks with custom increment support<br>
-• Rebuildable game state on reconnection
+• Automatic keep-alive and idling prevention
 </td>
 </tr>
 <tr>
@@ -69,8 +69,8 @@
 <strong>🎨 User Experience</strong>
 <br><br>
 • Premium Glassmorphism UI (Neon-Dark theme)<br>
-• Drag-and-drop & Tap-to-Move support<br>
-• Smooth piece animations (60fps transitions)<br>
+• Reactive board flip and scaling logic<br>
+• Smooth piece animations and haptic feedback<br>
 • High-fidelity chess sound engine<br>
 • Mobile-optimized board gestures
 </td>
@@ -79,9 +79,9 @@
 <br><br>
 • Dockerized for instant environment setup<br>
 • Gunicorn + Eventlet for high-concurrency sockets<br>
-• PostgreSQL ready with SQLAlchemy integration<br>
-• Bcrypt security & Email OTP verification<br>
-• Optimized for Render/Heroku cloud platforms
+• SQLAlchemy persistence layer<br>
+• Request throttling and API rate limiting<br>
+• Production-ready for Render, Heroku & AWS
 </td>
 </tr>
 </table>
@@ -90,7 +90,7 @@
 
 ## 🚀 Quick Start (Docker)
 
-Launch the entire platform in seconds using Docker:
+Launch the entire platform in seconds:
 
 1. **Clone the repository:**
    ```bash
@@ -113,21 +113,15 @@ Launch the entire platform in seconds using Docker:
 
 ### Backend Infrastructure
 *   **Framework:** Flask 3.0 (Python 3.11+)
-*   **Real-time:** Flask-SocketIO (WebSocket)
-*   **Worker:** Eventlet (High-concurrency async)
-*   **Database:** SQLAlchemy (SQLite/PostgreSQL)
-*   **Containerization:** Docker
+*   **Real-time:** Flask-SocketIO & Eventlet
+*   **Engine Logic:** Hybrid Stockfish 16.1 (Bitboard-accelerated)
+*   **Persistence:** SQLite/PostgreSQL with SQLAlchemy
+*   **Deployment:** Docker & Render
 
 ### Frontend Experience
-*   **Logic:** Vanilla JavaScript (ES6+)
-*   **Interactions:** Custom Drag-and-Drop & Gestures API
-*   **Styling:** Modern CSS3 (Variables, Glassmorphism, Responsive Grid)
-*   **Animations:** CSS Transforms & Opacity filters
-
-### Chess Intelligence
-*   **Engine:** Stockfish 16.1
-*   **Strategy:** Hybrid (Local Binary + Lichess Cloud API)
-*   **Logic:** Custom Python State Engine (bitboard-inspired logic)
+*   **UI/UX:** Vanilla JavaScript (ES6+), CSS Grid/Variables
+*   **Sync Logic:** Client-side Socket.IO with state reconciliation
+*   **Design:** Custom Glassmorphism System with Adaptive Orientation
 
 ---
 
@@ -135,35 +129,35 @@ Launch the entire platform in seconds using Docker:
 
 ```mermaid
 graph TD
-    A[Web & Mobile Client] <-->|Socket.IO & REST| B[Flask Server]
-    B <--> C[Game State Engine]
-    B <--> D[(Database)]
-    B <--> G[Docker Container]
-    C <--> E[Local Stockfish]
+    A[Web & Mobile Client] <-->|Socket.IO| B[Flask Application]
+    B <--> C[Chess State Engine]
+    B <--> D[(SQL Database)]
+    C <--> E[Local Stockfish Binary]
     C <--> F[Lichess Cloud API]
     
-    subgraph "Engine Analysis Layer"
-    E
-    F
+    subgraph "Sync & Analysis Layer"
+    G[Analysis Cache]
+    H[Request Throttler]
     end
+    
+    B --- G
+    B --- H
 ```
 
 ---
 
 ## 🎯 Roadmap
 
-- [x] Phase 1-4: Core logic, AI, Multiplayer, and ELO System.
-- [x] Phase 5: Mobile-first UI overhaul and gesture support.
-- [x] Phase 6: Professional Analysis Mode (Eval bar & Move Classification).
-- [x] Phase 7: Dockerization and Cloud-deployment optimization.
-- [ ] Phase 8: Friend system and custom invitation links.
-- [ ] Phase 9: PGN Export and move-by-move detailed report.
-- [ ] Phase 10: Global leaderboard and tactical puzzles.
+- [x] Phase 1-5: Core engine, ELO, and Multiplayer foundation.
+- [x] Phase 6: Professional Analysis Mode (Synced Eval bar & Quality Classification).
+- [x] Phase 7: Mobile UI overhaul and adaptive board scaling.
+- [x] Phase 8: Dockerization, Self-Ping Keep-Alive, and Cloud Optimization.
+- [ ] Phase 9: PGN Export and move-by-move detailed match reports.
+- [ ] Phase 10: Friend system, invitations, and Global Leaderboards.
 
 ---
 
 ## 🤝 Contributing
-Contributions are what make the open source community such an amazing place to learn, inspire, and create.
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
 3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
