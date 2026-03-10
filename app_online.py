@@ -95,6 +95,27 @@ def health():
     return {"status": "ok"}, 200
 
 
+@app.route('/api/ai/stats', methods=['GET'])
+def get_ai_stats():
+    """Get AI cache statistics"""
+    try:
+        if hasattr(ai_engine, 'cloud_engine') and ai_engine.cloud_engine:
+            stats = ai_engine.cloud_engine.get_cache_stats()
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        return jsonify({
+            'success': False,
+            'error': 'Cloud engine not initialized'
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))

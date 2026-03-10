@@ -300,23 +300,51 @@ class HybridStockfish:
         
         return None
     
-    def get_evaluation(self, fen):
-        """Get position evaluation"""
+    def findBestMove(self, gameState, validMoves):
+        """
+        Find best move with improved error handling
+        """
+        if not validMoves:
+            return None
         
-        # Try local first
-        if self.mode in ['hybrid', 'local'] and self.local_engine:
-            try:
-                eval_result = self.local_engine.get_evaluation(fen)
-                if eval_result is not None:
-                    return eval_result
-            except:
-                pass
+        # Try cloud Stockfish first
+        try:
+            # Use the global board_to_fen function
+            fen = board_to_fen(gameState)
+            if self.cloud_engine:
+                cloud_move_uci = self.cloud_engine.get_best_move(fen)
+                
+                if cloud_move_uci:
+                    # Convert UCI to Move object
+                    for move in validMoves:
+                        move_uci = self._move_to_uci(move)
+                        if move_uci == cloud_move_uci:
+                            print(f"🎯 Best move: {cloud_move_uci}")
+                            return move
+            
+        except Exception as e:
+            print(f"⚠️ Cloud Stockfish error: {e}")
         
-        # Use cloud
-        if self.mode in ['hybrid', 'cloud'] and self.cloud_engine:
-            return self.cloud_engine.get_evaluation(fen)
+        # Fallback to random move
+        import random
+        fallback = random.choice(validMoves)
+        print(f"⚠️ Using random move: {self._move_to_uci(fallback)}")
+        return fallback
+
+    def _move_to_uci(self, move):
+        """Convert Move object to UCI notation"""
+        cols = "abcdefgh"
+        rows = "87654321"
         
-        return None
+        start_square = cols[move.startCol] + rows[move.startRow]
+        end_square = cols[move.endCol] + rows[move.endRow]
+        
+        # Add promotion piece if applicable
+        if move.isPawnPromotion:
+            promotion_piece = move.promotionChoice.lower()
+            return f"{start_square}{end_square}{promotion_piece}"
+        
+        return f"{start_square}{end_square}"
     
     def set_skill_level(self, skill_level):
         """Update difficulty"""
@@ -329,6 +357,8 @@ class HybridStockfish:
 
 # Global Stockfish instance (hybrid)
 _stockfish_engine = None
+cloud_engine = None
+local_engine = None
 
 
 def initialize_stockfish(stockfish_path=None, skill_level=10, depth=15):
@@ -343,7 +373,7 @@ def initialize_stockfish(stockfish_path=None, skill_level=10, depth=15):
     Returns:
         bool: True if any engine is available
     """
-    global _stockfish_engine
+    global _stockfish_engine, cloud_engine, local_engine
     
     # Try local first
     local_engine = None
@@ -356,6 +386,9 @@ def initialize_stockfish(stockfish_path=None, skill_level=10, depth=15):
         skill_level=skill_level,
         depth=depth
     )
+    
+    # Expose individual engines for stats/direct access
+    cloud_engine = _stockfish_engine.cloud_engine
     
     # Return True if ANY engine is available (local or cloud)
     return _stockfish_engine.mode != 'none'
@@ -465,14 +498,7 @@ def findBestMove(gs, validMoves):
         initialize_stockfish(skill_level=15, depth=15)
 
     if _stockfish_engine and _stockfish_engine.mode != 'none':
-        fen = board_to_fen(gs)
-        uci_move = _stockfish_engine.get_best_move(fen)
-
-        if uci_move:
-            move = uci_to_move(uci_move, validMoves)
-            if move:
-                print(f"🎯 Best move: {uci_move}")
-                return move
+        return _stockfish_engine.findBestMove(gs, validMoves)
 
     # Fallback to random
     print("⚠️ Using random move")
