@@ -674,28 +674,59 @@ def analyze_game(game_id):
         
         for i, move_record in enumerate(moves):
             # Pos before
+            # 2. Get Evaluation (current position)
             fen = ai_engine.board_to_fen(temp_gs)
             eval_before = ai_engine.get_position_evaluation(fen)
+            # Use Python evaluator if API/Engine fails
+            if eval_before is None or eval_before == 0.0:
+                eval_before = ai_engine.python_minimax_eval(temp_gs)
             
-            # Best move in that pos
+            # 3. Find Best Move
             valid_moves = temp_gs.getValidMoves()
             best_move_obj = ai_engine.findBestMove(temp_gs, valid_moves)
             best_move_san = best_move_obj.getSAN(temp_gs, 0) if best_move_obj else None
             
-            # Make the move
-            from_notation = move_record['notation']
+            # Make the move in analysis (Robust SAN/UCI matching)
+            from_notation = move_record['notation'].replace('+', '').replace('#', '')
             move_found = False
+            
+            # 1. Try exact SAN search
             for vm in valid_moves:
-                if vm.getSAN(temp_gs, 0) == from_notation:
+                san = vm.getSAN(temp_gs, 0).replace('+', '').replace('#', '')
+                if san == from_notation:
                     temp_gs.makeMove(vm)
                     move_found = True
                     break
             
+            # 2. Try Case-insensitive SAN search fallback
             if not move_found:
+                for vm in valid_moves:
+                    san = vm.getSAN(temp_gs, 0).replace('+', '').replace('#', '').lower()
+                    if san == from_notation.lower():
+                        temp_gs.makeMove(vm)
+                        move_found = True
+                        break
+            
+            # 3. Try coordinate (UCI) matching fallback 
+            if not move_found and 'from' in move_record and 'to' in move_record:
+                for vm in valid_moves:
+                    if (vm.startRow == move_record['from']['row'] and 
+                        vm.startCol == move_record['from']['col'] and
+                        vm.endRow == move_record['to']['row'] and
+                        vm.endCol == move_record['to']['col']):
+                        temp_gs.makeMove(vm)
+                        move_found = True
+                        break
+            
+            if not move_found:
+                print(f"⚠️ Could not find move {from_notation} during analysis")
                 break
                 
             fen_after = ai_engine.board_to_fen(temp_gs)
             eval_after = ai_engine.get_position_evaluation(fen_after)
+            # Use Python evaluator if API/Engine fails
+            if eval_after is None or eval_after == 0.0:
+                eval_after = ai_engine.python_minimax_eval(temp_gs)
             
             # Classification logic
             classification = 'good'
