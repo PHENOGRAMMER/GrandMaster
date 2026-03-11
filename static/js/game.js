@@ -766,18 +766,23 @@ function handleGameEnd(data) {
 }
 
 function resignGame() {
-    if (!isOnlineGame) {
-        showToast('Can only resign in online games');
-        return;
-    }
-
     if (isGameComplete) {
         showToast('Game already finished');
         return;
     }
 
     if (confirm('Are you sure you want to resign?')) {
-        socket.emit('resign', { game_id: gameId });
+        if (isOnlineGame) {
+            socket.emit('resign', { game_id: gameId });
+        } else {
+            // Local game resignation
+            const result = isWhiteTurn ? 'black_win' : 'white_win';
+            handleGameEnd({
+                success: true,
+                result: result,
+                termination: 'Resignation'
+            });
+        }
         playSound('gameEnd');
         closeMenu();
     }
