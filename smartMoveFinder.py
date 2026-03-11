@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 # Import CloudStockfish from the dedicated module (with caching & rate-limiting)
-from cloud_stockfish import CloudStockfish
+from cloud_stockfish import CloudStockfish, python_minimax_move
 
 # Try to import stockfish library (for local use)
 try:
@@ -252,11 +252,9 @@ class HybridStockfish:
         except Exception as e:
             print(f"⚠️ Cloud Stockfish error: {e}")
         
-        # Fallback to random move
-        import random
-        fallback = random.choice(validMoves)
-        print(f"⚠️ Using random move: {self._move_to_uci(fallback)}")
-        return fallback
+        # Fallback to Python minimax (intelligent, always works)
+        print("ℹ️ APIs unavailable — using Python minimax")
+        return python_minimax_move(gameState, validMoves, depth=3)
 
     def _move_to_uci(self, move):
         """Convert Move object to UCI notation"""
