@@ -102,8 +102,12 @@ def _evaluate_board(board):
     return score
 
 
-def _minimax(gs, valid_moves, depth, alpha, beta, maximizing_white):
-    """Alpha-beta minimax. Returns (score, best_move)."""
+def _minimax(gs, valid_moves, depth, alpha, beta, maximizing_white, deadline):
+    """Alpha-beta minimax with hard time deadline."""
+    if time.time() > deadline:
+        # Time limit hit — return static eval, no move (caller keeps best so far)
+        return _evaluate_board(gs.board), None
+
     if depth == 0 or gs.checkMate or gs.staleMate:
         if gs.checkMate:
             return (-99999 if maximizing_white else 99999), None
@@ -118,7 +122,7 @@ def _minimax(gs, valid_moves, depth, alpha, beta, maximizing_white):
         for move in valid_moves:
             gs.makeMove(move)
             next_moves = gs.getValidMoves()
-            score, _ = _minimax(gs, next_moves, depth - 1, alpha, beta, False)
+            score, _ = _minimax(gs, next_moves, depth - 1, alpha, beta, False, deadline)
             gs.undoMove()
             if score > best_score:
                 best_score = score
@@ -132,7 +136,7 @@ def _minimax(gs, valid_moves, depth, alpha, beta, maximizing_white):
         for move in valid_moves:
             gs.makeMove(move)
             next_moves = gs.getValidMoves()
-            score, _ = _minimax(gs, next_moves, depth - 1, alpha, beta, True)
+            score, _ = _minimax(gs, next_moves, depth - 1, alpha, beta, True, deadline)
             gs.undoMove()
             if score < best_score:
                 best_score = score
@@ -143,20 +147,32 @@ def _minimax(gs, valid_moves, depth, alpha, beta, maximizing_white):
         return best_score, best_move
 
 
-def python_minimax_move(gs, valid_moves, depth=3):
-    """Find best move using Python minimax. Always returns a move."""
+def python_minimax_move(gs, valid_moves, depth=2, time_limit=5.0):
+    """Find best move using time-limited Python minimax. Always returns a move."""
     if not valid_moves:
         return None
+
+    deadline = time.time() + time_limit
+
     # Shuffle for variety at equal positions
     shuffled = list(valid_moves)
     random.shuffle(shuffled)
-    _, move = _minimax(gs, shuffled, depth, float('-inf'), float('inf'), gs.whiteToMove)
-    if move:
+
+    # Iterative deepening: depth 1 first for fast baseline, then deeper
+    best_move = shuffled[0]  # safe default
+    for d in range(1, depth + 1):
+        if time.time() > deadline:
+            break
+        _, move = _minimax(gs, shuffled, d, float('-inf'), float('inf'), gs.whiteToMove, deadline)
+        if move:
+            best_move = move
+
+    if best_move:
         cols = "abcdefgh"
         rows = "87654321"
-        uci = cols[move.startCol] + rows[move.startRow] + cols[move.endCol] + rows[move.endRow]
-        print(f"🧠 Python minimax: {uci}")
-    return move
+        uci = cols[best_move.startCol] + rows[best_move.startRow] + cols[best_move.endCol] + rows[best_move.endRow]
+        print(f"🧠 Python minimax (d{depth}): {uci}")
+    return best_move
 
 
 # ============================================================================

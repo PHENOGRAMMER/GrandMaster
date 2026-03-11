@@ -252,9 +252,9 @@ class HybridStockfish:
         except Exception as e:
             print(f"⚠️ Cloud Stockfish error: {e}")
         
-        # Fallback to Python minimax (intelligent, always works)
-        print("ℹ️ APIs unavailable — using Python minimax")
-        return python_minimax_move(gameState, validMoves, depth=3)
+        # Fallback to Python minimax depth=2 (fast, no timeout risk)
+        print("ℹ️ APIs unavailable — using Python minimax (depth 2)")
+        return python_minimax_move(gameState, validMoves, depth=2)
 
     def _move_to_uci(self, move):
         """Convert Move object to UCI notation"""
@@ -446,9 +446,9 @@ def findBestMove(gs, validMoves):
     if _stockfish_engine and _stockfish_engine.mode != 'none':
         return _stockfish_engine.findBestMove(gs, validMoves)
 
-    # Fallback to random
-    print("⚠️ Using random move")
-    return findRandomMoves(validMoves)
+    # Fallback to minimax (intelligent, no API needed)
+    print("ℹ️ Engine not ready — using Python minimax")
+    return python_minimax_move(gs, validMoves, depth=2)
 
 
 def findRandomMoves(validMoves):
