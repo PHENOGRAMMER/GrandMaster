@@ -94,8 +94,8 @@ class StockfishEngine:
         possible_paths = [
             os.path.join(base_dir, "stockfish.exe"),
             # Windows
-            r"C:\Program Files\Stockfish\stockfish.exe",
-            r"C:\Program Files (x86)\Stockfish\stockfish.exe",
+            r"C:\\Program Files\\Stockfish\\stockfish.exe",
+            r"C:\\Program Files (x86)\\Stockfish\\stockfish.exe",
             r"stockfish.exe",
             # Mac (Homebrew)
             "/usr/local/bin/stockfish",
@@ -199,7 +199,7 @@ class HybridStockfish:
             else:
                 print("✅ Local-Only Mode: Using local Stockfish")
                 self.mode = 'local'
-        elif self.cloud_engine and self.cloud_engine.enabled:
+        elif self.cloud_engine is not None:
             print("✅ Cloud-Only Mode: Using Lichess API")
             self.mode = 'cloud'
         else:
