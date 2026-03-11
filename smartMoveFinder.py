@@ -11,6 +11,9 @@ import os
 import time
 from pathlib import Path
 
+# Import CloudStockfish from the dedicated module (with caching & rate-limiting)
+from cloud_stockfish import CloudStockfish
+
 # Try to import stockfish library (for local use)
 try:
     from stockfish import Stockfish
@@ -18,14 +21,6 @@ try:
 except ImportError:
     STOCKFISH_AVAILABLE = False
     print("⚠️ Stockfish library not installed (cloud mode will be used)")
-
-# Try to import requests for cloud API
-try:
-    import requests
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
-    print("⚠️ requests library not installed - run: pip install requests")
 
 import ChessEngine
 
@@ -177,81 +172,6 @@ class StockfishEngine:
             return None
 
 
-class CloudStockfish:
-    """Cloud Stockfish using Lichess Free API with Caching and Rate Limiting"""
-    
-    def __init__(self, skill_level=15, depth=18):
-        self.enabled = REQUESTS_AVAILABLE
-        self.skill_level = skill_level
-        self.depth = min(depth, 20)
-        self.base_url = "https://lichess.org/api/cloud-eval"
-        
-        # Caching & Throttling
-        self.cache = {}
-        self.last_request_time = 0
-        self.min_interval = 1.0  # Respect Lichess free tier
-        
-        if self.enabled:
-            print(f"✅ Cloud Stockfish ready (Skill: {skill_level}, Depth: {self.depth})")
-        else:
-            print("⚠️ Cloud Stockfish unavailable (install requests: pip install requests)")
-    
-    def _wait_for_api(self):
-        current = time.time()
-        elapsed = current - self.last_request_time
-        if elapsed < self.min_interval:
-            import time as pytime
-            pytime.sleep(self.min_interval - elapsed)
-        self.last_request_time = time.time()
-
-    def get_best_move(self, fen):
-        if not self.enabled: return None
-        
-        cache_key = f"best_{fen}"
-        if cache_key in self.cache: return self.cache[cache_key]
-        
-        self._wait_for_api()
-        try:
-            response = requests.get(self.base_url, params={'fen': fen, 'multiPv': 1}, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                if 'pvs' in data and data['pvs']:
-                    move = data['pvs'][0]['moves'].split()[0]
-                    self.cache[cache_key] = move
-                    return move
-            return None
-        except: return None
-    
-    def get_evaluation(self, fen):
-        """Lichess API returns Absolute White Perspective already."""
-        if not self.enabled: return None
-        
-        cache_key = f"eval_{fen}"
-        if cache_key in self.cache: return self.cache[cache_key]
-        
-        self._wait_for_api()
-        try:
-            response = requests.get(self.base_url, params={'fen': fen, 'multiPv': 1}, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                
-                if 'pvs' in data and data['pvs']:
-                    pv = data['pvs'][0]
-                    res = None
-                    if 'cp' in pv: res = pv['cp'] / 100.0
-                    elif 'mate' in pv: res = f"M{pv['mate']}"
-                    
-                    if res is not None:
-                        self.cache[cache_key] = res
-                        return res
-            return None
-        except Exception:
-            return None
-    
-    def set_skill_level(self, skill_level):
-        """Update skill level"""
-        self.skill_level = skill_level
-
 
 class HybridStockfish:
     """
@@ -261,12 +181,19 @@ class HybridStockfish:
     
     def __init__(self, local_engine=None, skill_level=15, depth=18):
         self.local_engine = local_engine
-        self.cloud_engine = CloudStockfish(skill_level, depth) if REQUESTS_AVAILABLE else None
+        
+        # Use the dedicated CloudStockfish module (with caching!)
+        try:
+            self.cloud_engine = CloudStockfish(skill_level, depth)
+        except Exception as e:
+            print(f"⚠️ Could not initialize cloud engine: {e}")
+            self.cloud_engine = None
+        
         self.skill_level = skill_level
         self.depth = depth
         
         if local_engine and local_engine.enabled:
-            if self.cloud_engine and self.cloud_engine.enabled:
+            if self.cloud_engine:
                 print("✅ Hybrid Mode: Local Stockfish primary, Cloud backup")
                 self.mode = 'hybrid'
             else:
@@ -345,6 +272,27 @@ class HybridStockfish:
             return f"{start_square}{end_square}{promotion_piece}"
         
         return f"{start_square}{end_square}"
+    
+    def get_evaluation(self, fen):
+        """Get position evaluation - try local first, fallback to cloud"""
+        
+        # Try local first if available
+        if self.mode in ['hybrid', 'local'] and self.local_engine:
+            try:
+                eval_result = self.local_engine.get_evaluation(fen)
+                if eval_result is not None:
+                    return eval_result
+            except Exception as e:
+                if self.mode == 'hybrid':
+                    print(f"Local eval error, falling back to cloud")
+                else:
+                    print(f"Local eval error: {e}")
+        
+        # Use cloud if available
+        if self.mode in ['hybrid', 'cloud'] and self.cloud_engine:
+            return self.cloud_engine.get_evaluation(fen)
+        
+        return None
     
     def set_skill_level(self, skill_level):
         """Update difficulty"""
