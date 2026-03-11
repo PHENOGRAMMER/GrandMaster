@@ -216,3 +216,11 @@ class CloudStockfish:
         self.cache_hits = 0
         self.cache_misses = 0
         print("🗑️ Cache cleared")
+
+    def set_skill_level(self, skill_level):
+        """Update skill level (0-20)"""
+        self.skill_level = min(20, max(0, skill_level))
+
+    def set_depth(self, depth):
+        """Update search depth"""
+        self.depth = min(20, max(1, depth))
