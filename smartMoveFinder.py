@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 # Import CloudStockfish from the dedicated module (with caching & rate-limiting)
-from cloud_stockfish import CloudStockfish, python_minimax_move
+from cloud_stockfish import CloudStockfish, python_minimax_move, python_minimax_eval
 
 # Try to import stockfish library (for local use)
 try:
@@ -89,29 +89,34 @@ class StockfishEngine:
             print(f"Skill update error: {e}")
 
     def _find_stockfish(self):
-        """Try to auto-detect Stockfish installation"""
+        """Try to auto-detect Stockfish installation based on OS"""
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        possible_paths = [
-            os.path.join(base_dir, "stockfish.exe"),
-            # Windows
-            r"C:\\Program Files\\Stockfish\\stockfish.exe",
-            r"C:\\Program Files (x86)\\Stockfish\\stockfish.exe",
-            r"stockfish.exe",
-            # Mac (Homebrew)
-            "/usr/local/bin/stockfish",
-            "/opt/homebrew/bin/stockfish",
-            # Linux
-            "/usr/bin/stockfish",
-            "/usr/games/stockfish",
-            # Relative paths
-            "./stockfish",
-            "./stockfish.exe",
-            "../stockfish",
-            "../stockfish.exe"
-        ]
+        is_windows = os.name == 'nt'
+        
+        # 1. Start with the most likely OS-specific system paths
+        if is_windows:
+            possible_paths = [
+                os.path.join(base_dir, "stockfish.exe"),
+                r"C:\Program Files\Stockfish\stockfish.exe",
+                r"C:\Program Files (x86)\Stockfish\stockfish.exe",
+                "stockfish.exe"
+            ]
+        else:
+            # Linux / Mac / Render
+            possible_paths = [
+                "/usr/games/stockfish",  # Common location for apt-get install stockfish
+                "/usr/bin/stockfish",
+                "/usr/local/bin/stockfish",
+                os.path.join(base_dir, "stockfish"),
+                "./stockfish"
+            ]
 
+        # 2. Check each path
         for path in possible_paths:
-            if os.path.exists(path):
+            if os.path.exists(path) and os.path.isfile(path):
+                # On Linux/Mac, also check if executable
+                if not is_windows and not os.access(path, os.X_OK):
+                    continue
                 print(f"✅ Found Stockfish at: {path}")
                 return path
 
@@ -230,17 +235,29 @@ class HybridStockfish:
     def findBestMove(self, gameState, validMoves):
         """
         Find best move with improved error handling
+        Priority: 1. Local 2. Cloud 3. Python Minimax
         """
         if not validMoves:
             return None
         
-        # Try cloud Stockfish first
+        fen = board_to_fen(gameState)
+        
+        # 1. Try local Stockfish first
+        if self.mode in ['hybrid', 'local'] and self.local_engine:
+            try:
+                local_move_uci = self.local_engine.get_best_move(fen)
+                if local_move_uci:
+                    for move in validMoves:
+                        if self._move_to_uci(move) == local_move_uci:
+                            print(f"🤖 Local Stockfish: {local_move_uci}")
+                            return move
+            except Exception as e:
+                print(f"⚠️ Local Stockfish error: {e}")
+
+        # 2. Try cloud Stockfish fallback
         try:
-            # Use the global board_to_fen function
-            fen = board_to_fen(gameState)
             if self.cloud_engine:
                 cloud_move_uci = self.cloud_engine.get_best_move(fen)
-                
                 if cloud_move_uci:
                     # Convert UCI to Move object
                     for move in validMoves:
@@ -248,11 +265,10 @@ class HybridStockfish:
                         if move_uci == cloud_move_uci:
                             print(f"🎯 Best move: {cloud_move_uci}")
                             return move
-            
         except Exception as e:
             print(f"⚠️ Cloud Stockfish error: {e}")
         
-        # Fallback to Python minimax depth=2 (fast, no timeout risk)
+        # 3. Fallback to Python minimax depth=2 (fast, no timeout risk)
         print("ℹ️ APIs unavailable — using Python minimax (depth 2)")
         return python_minimax_move(gameState, validMoves, depth=2)
 
