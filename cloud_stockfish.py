@@ -1,226 +1,265 @@
 """
-Cloud Stockfish using Lichess API
-With caching and rate limiting protection
+Cloud Stockfish - Dual Engine Strategy
+Primary:   Lichess Cloud Eval (fast, cached, opening DB)
+Fallback:  stockfish.online API (works for ANY position, free)
 """
 
 import requests
 import time
-from typing import Optional, Dict
+
 
 class CloudStockfish:
     """
-    Cloud-based Stockfish using Lichess API
-    With intelligent caching and rate limit protection
+    Dual-cloud Stockfish engine:
+    1. Lichess cloud-eval  → fast, great for known positions
+    2. stockfish.online    → universal fallback, works for all positions
     """
-    
+
     def __init__(self, skill_level=15, depth=15):
         self.skill_level = min(20, max(0, skill_level))
-        self.depth = min(20, max(1, depth))
-        self.api_url = "https://lichess.org/api/cloud-eval"
-        
-        # Rate limiting
-        self.last_request_time = 0
-        self.min_request_interval = 1.5  # 1.5 seconds between requests
-        self.rate_limit_cooldown = 60  # Wait 60s after rate limit
-        self.last_rate_limit_time = 0
-        
-        # Simple cache for position evaluations
+        self.depth = min(15, max(1, depth))  # stockfish.online max is 15
+
+        # API endpoints
+        self.lichess_url = "https://lichess.org/api/cloud-eval"
+        self.sfol_url    = "https://stockfish.online/api/s/v2.php"
+
+        # Rate limiting (shared across both APIs)
+        self.last_request_time = 0.0
+        self.min_request_interval = 1.0  # 1 second minimum between requests
+        self.rate_limit_cooldown = 60    # seconds to wait after 429
+        self.last_rate_limit_time = 0.0
+
+        # Shared position cache
         self.cache = {}
         self.cache_hits = 0
         self.cache_misses = 0
-        
+
         print(f"✅ Cloud Stockfish initialized (Skill: {self.skill_level}/20, Depth: {self.depth})")
-    
+
     def _wait_for_rate_limit(self):
-        """Ensure we don't exceed rate limits"""
-        # Check if we're in cooldown after rate limit
+        """Enforce minimum interval between API calls."""
         if self.last_rate_limit_time > 0:
-            time_since_limit = time.time() - self.last_rate_limit_time
-            if time_since_limit < self.rate_limit_cooldown:
-                wait_time = self.rate_limit_cooldown - time_since_limit
-                print(f"⏳ Rate limit cooldown: waiting {wait_time:.0f}s")
-                time.sleep(wait_time)
-                self.last_rate_limit_time = 0  # Reset after cooldown
-        
-        # Ensure minimum delay between requests
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        
-        if time_since_last < self.min_request_interval:
-            wait_time = self.min_request_interval - time_since_last
-            time.sleep(wait_time)
-        
+            elapsed = time.time() - self.last_rate_limit_time
+            if elapsed < self.rate_limit_cooldown:
+                wait = self.rate_limit_cooldown - elapsed
+                print(f"⏳ Rate limit cooldown: {wait:.0f}s remaining")
+                time.sleep(wait)
+                self.last_rate_limit_time = 0.0
+
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_request_interval:
+            time.sleep(self.min_request_interval - elapsed)
+
         self.last_request_time = time.time()
-    
-    def get_best_move(self, fen, multiPv=1):
-        """
-        Get best move for a position with caching
-        
-        Args:
-            fen: FEN string of the position
-            multiPv: Number of best moves to return (default 1)
-        
-        Returns:
-            Best move in UCI format (e.g., 'e2e4') or None
-        """
-        # Check cache first
-        cache_key = f"{fen}_{multiPv}"
-        if cache_key in self.cache:
-            self.cache_hits += 1
-            cached_move = self.cache[cache_key]
-            print(f"💾 Using cached move: {cached_move}")
-            return cached_move
-        
-        self.cache_misses += 1
-        
-        # Wait to respect rate limits
-        self._wait_for_rate_limit()
-        
+
+    # -----------------------------------------------------------------------
+    # PRIMARY: Lichess Cloud Eval
+    # -----------------------------------------------------------------------
+    def _lichess_best_move(self, fen):
+        """Try Lichess cloud-eval. Returns UCI move string or None."""
         try:
-            params = {
-                'fen': fen,
-                'multiPv': multiPv
-            }
-            
+            self._wait_for_rate_limit()
             response = requests.get(
-                self.api_url,
-                params=params,
+                self.lichess_url,
+                params={'fen': fen, 'multiPv': 1},
+                timeout=5,
+                headers={'User-Agent': 'GrandMaster Chess Platform'}
+            )
+
+            if response.status_code == 429:
+                print("⚠️ Lichess rate limit hit")
+                self.last_rate_limit_time = time.time()
+                return None
+
+            if response.status_code == 404:
+                # Position not in Lichess DB — normal, will use fallback
+                return None
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            pvs = data.get('pvs', [])
+            if pvs and pvs[0].get('moves'):
+                move = pvs[0]['moves'].split()[0]
+                print(f"🌐 Lichess: {move}")
+                return move
+
+        except Exception:
+            pass
+        return None
+
+    def _lichess_evaluation(self, fen):
+        """Try Lichess cloud-eval for evaluation. Returns score or None."""
+        try:
+            self._wait_for_rate_limit()
+            response = requests.get(
+                self.lichess_url,
+                params={'fen': fen, 'multiPv': 1},
+                timeout=5,
+                headers={'User-Agent': 'GrandMaster Chess Platform'}
+            )
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            pvs = data.get('pvs', [])
+            if pvs:
+                pv = pvs[0]
+                if 'mate' in pv:
+                    return f"M{pv['mate']}"
+                elif 'cp' in pv:
+                    return pv['cp'] / 100.0
+
+        except Exception:
+            pass
+        return None
+
+    # -----------------------------------------------------------------------
+    # FALLBACK: stockfish.online (works for ANY position)
+    # -----------------------------------------------------------------------
+    def _sfol_best_move(self, fen):
+        """Use stockfish.online as universal fallback. Returns UCI move or None."""
+        try:
+            self._wait_for_rate_limit()
+            response = requests.get(
+                self.sfol_url,
+                params={'fen': fen, 'depth': min(self.depth, 12)},
                 timeout=10,
                 headers={'User-Agent': 'GrandMaster Chess Platform'}
             )
-            
-            # Handle rate limiting
+
             if response.status_code == 429:
-                print("⚠️ Cloud API rate limit")
                 self.last_rate_limit_time = time.time()
                 return None
-            
-            # Handle other errors
+
             if response.status_code != 200:
-                print(f"⚠️ Cloud API error: {response.status_code}")
                 return None
-            
+
             data = response.json()
-            
-            # Extract best move from response
-            if 'pvs' in data and len(data['pvs']) > 0:
-                best_pv = data['pvs'][0]
-                if 'moves' in best_pv and len(best_pv['moves']) > 0:
-                    move = best_pv['moves'].split()[0]  # First move in UCI format
-                    
-                    # Cache the result
-                    self.cache[cache_key] = move
-                    
-                    # Limit cache size to prevent memory issues
-                    if len(self.cache) > 1000:
-                        # Remove oldest entries (simple approach)
-                        keys_to_remove = list(self.cache.keys())[:100]
-                        for key in keys_to_remove:
-                            del self.cache[key]
-                    
-                    print(f"🌐 Cloud Stockfish: {move}")
-                    return move
-            
-            return None
-            
-        except requests.exceptions.Timeout:
-            print("⚠️ Cloud API timeout")
-            return None
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ Cloud API error: {e}")
-            return None
+            if data.get('success') and data.get('bestmove'):
+                # Response: "bestmove e2e4 ponder e7e5"
+                raw = data['bestmove'].strip()
+                move = raw.split()[1] if raw.startswith('bestmove') else raw.split()[0]
+                print(f"🤖 stockfish.online: {move}")
+                return move
+
         except Exception as e:
-            print(f"⚠️ Unexpected error: {e}")
-            return None
-    
+            print(f"⚠️ stockfish.online error: {e}")
+        return None
+
+    def _sfol_evaluation(self, fen):
+        """Use stockfish.online for evaluation. Returns score or None."""
+        try:
+            self._wait_for_rate_limit()
+            response = requests.get(
+                self.sfol_url,
+                params={'fen': fen, 'depth': min(self.depth, 12)},
+                timeout=10,
+                headers={'User-Agent': 'GrandMaster Chess Platform'}
+            )
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            if not data.get('success'):
+                return None
+
+            # Parse the "info" string for score
+            info = data.get('info', '')
+            if 'score mate' in info:
+                # e.g. "... score mate 3 ..."
+                parts = info.split('score mate')
+                mate_val = int(parts[1].strip().split()[0])
+                return f"M{mate_val}"
+            elif 'score cp' in info:
+                # e.g. "... score cp 45 ..."
+                parts = info.split('score cp')
+                cp_val = int(parts[-1].strip().split()[0])
+                # stockfish.online returns score relative to side-to-move
+                is_white_to_move = ' w ' in fen
+                if not is_white_to_move:
+                    cp_val = -cp_val
+                return cp_val / 100.0
+
+        except Exception:
+            pass
+        return None
+
+    # -----------------------------------------------------------------------
+    # PUBLIC API
+    # -----------------------------------------------------------------------
+    def get_best_move(self, fen, multiPv=1):
+        """Get best move: try cache → Lichess → stockfish.online."""
+        cache_key = f"move_{fen}"
+        if cache_key in self.cache:
+            self.cache_hits += 1
+            print(f"💾 Cached move: {self.cache[cache_key]}")
+            return self.cache[cache_key]
+
+        self.cache_misses += 1
+
+        # 1. Try Lichess first
+        move = self._lichess_best_move(fen)
+
+        # 2. Fallback to stockfish.online
+        if not move:
+            move = self._sfol_best_move(fen)
+
+        if move:
+            self.cache[cache_key] = move
+            # Evict old entries if cache too large
+            if len(self.cache) > 1000:
+                for old_key in list(self.cache.keys())[:100]:
+                    del self.cache[old_key]
+
+        return move
+
     def get_evaluation(self, fen):
-        """
-        Get position evaluation (centipawns or mate score)
-        
-        Args:
-            fen: FEN string of the position
-        
-        Returns:
-            Evaluation score (e.g., 0.5, "M3") or None
-        """
-        # Check cache
+        """Get position evaluation: try cache → Lichess → stockfish.online."""
         cache_key = f"eval_{fen}"
         if cache_key in self.cache:
             self.cache_hits += 1
             return self.cache[cache_key]
-        
+
         self.cache_misses += 1
-        
-        # Wait to respect rate limits
-        self._wait_for_rate_limit()
-        
-        try:
-            params = {'fen': fen, 'multiPv': 1}
-            
-            response = requests.get(
-                self.api_url,
-                params=params,
-                timeout=10,
-                headers={'User-Agent': 'GrandMaster Chess Platform'}
-            )
-            
-            if response.status_code == 429:
-                print("⚠️ Cloud API rate limit")
-                self.last_rate_limit_time = time.time()
-                return None
-            
-            if response.status_code != 200:
-                return None
-            
-            data = response.json()
-            
-            if 'pvs' in data and len(data['pvs']) > 0:
-                best_pv = data['pvs'][0]
-                
-                # Check for mate score
-                if 'mate' in best_pv:
-                    eval_score = f"M{best_pv['mate']}"
-                # Check for centipawn score
-                elif 'cp' in best_pv:
-                    eval_score = best_pv['cp'] / 100.0  # Convert to pawns
-                else:
-                    eval_score = 0.0
-                
-                # Cache the result
-                self.cache[cache_key] = eval_score
-                
-                return eval_score
-            
-            return None
-            
-        except Exception as e:
-            print(f"⚠️ Evaluation error: {e}")
-            return None
-    
+
+        # 1. Try Lichess first
+        score = self._lichess_evaluation(fen)
+
+        # 2. Fallback to stockfish.online
+        if score is None:
+            score = self._sfol_evaluation(fen)
+
+        if score is not None:
+            self.cache[cache_key] = score
+
+        return score
+
     def get_cache_stats(self):
-        """Get cache performance statistics"""
-        total_requests = self.cache_hits + self.cache_misses
-        if total_requests > 0:
-            hit_rate = (self.cache_hits / total_requests) * 100
-            return {
-                'hits': self.cache_hits,
-                'misses': self.cache_misses,
-                'hit_rate': f"{hit_rate:.1f}%",
-                'cache_size': len(self.cache)
-            }
-        return {'hits': 0, 'misses': 0, 'hit_rate': '0%', 'cache_size': 0}
-    
+        """Get cache performance statistics."""
+        total = self.cache_hits + self.cache_misses
+        hit_rate = f"{(self.cache_hits / total * 100):.1f}%" if total > 0 else "0%"
+        return {
+            'hits': self.cache_hits,
+            'misses': self.cache_misses,
+            'hit_rate': hit_rate,
+            'cache_size': len(self.cache)
+        }
+
     def clear_cache(self):
-        """Clear the position cache"""
+        """Clear the position cache."""
         self.cache.clear()
         self.cache_hits = 0
         self.cache_misses = 0
         print("🗑️ Cache cleared")
 
     def set_skill_level(self, skill_level):
-        """Update skill level (0-20)"""
+        """Update skill level (0-20)."""
         self.skill_level = min(20, max(0, skill_level))
 
     def set_depth(self, depth):
-        """Update search depth"""
-        self.depth = min(20, max(1, depth))
+        """Update search depth."""
+        self.depth = min(15, max(1, depth))
