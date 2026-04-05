@@ -20,4 +20,5 @@ COPY . .
 
 EXPOSE 5000
 
-CMD gunicorn -k eventlet -w 1 --bind 0.0.0.0:$PORT app_online:app
+# Use shell form with explicit sh -c to ensure $PORT is expanded
+CMD ["sh", "-c", "gunicorn -k eventlet -w 1 --bind 0.0.0.0:$PORT app_online:app"]
