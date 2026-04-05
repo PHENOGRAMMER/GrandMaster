@@ -16,9 +16,13 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application and the wrapper script
 COPY . .
+
+# Ensure the start script is executable
+RUN chmod +x start.sh
 
 EXPOSE 5000
 
-# Use shell form with explicit sh -c to ensure $PORT is expanded
-CMD ["sh", "-c", "gunicorn -k eventlet -w 1 --bind 0.0.0.0:$PORT app_online:app"]
+# Use the wrapper script for the start command
+CMD ["./start.sh"]
