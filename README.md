@@ -109,6 +109,16 @@ Launch the entire platform in seconds:
 
 ---
 
+### 🚉 Deployment (Railway)
+1. **Connect Repository:** Go to [Railway.app](https://railway.app), click "New Project" and select your GitHub repository.
+2. **Add Postgres:** Click "New", select "Database", and choose "PostgreSQL". Railway will automatically link the `DATABASE_URL`.
+3. **Environment Variables:**
+   - `PORT`: 5000 (Railway usually assigns one, but this ensures it matches).
+   - `SECRET_KEY`: Add a random string.
+4. **Deploy:** Railway will detect the `Dockerfile` (via `railway.json`) and launch the app.
+
+---
+
 ## 🛠️ Tech Stack
 
 ### Backend Infrastructure
@@ -116,7 +126,7 @@ Launch the entire platform in seconds:
 *   **Real-time:** Flask-SocketIO & Eventlet
 *   **Engine Logic:** Hybrid Stockfish 16.1 (Bitboard-accelerated)
 *   **Persistence:** SQLite/PostgreSQL with SQLAlchemy
-*   **Deployment:** Docker & Render
+*   **Deployment:** Docker, Render & Railway
 
 ### Frontend Experience
 *   **UI/UX:** Vanilla JavaScript (ES6+), CSS Grid/Variables

@@ -27,7 +27,7 @@ load_dotenv()
 from models import db, User, Game, MatchmakingQueue, init_db
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
@@ -44,9 +44,16 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Email Configuration (Resend)
-# RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
-# resend.api_key = RESEND_API_KEY
+# Email Configuration
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', app.config['MAIL_USERNAME'])
+
+# Flag for email verification
+EMAIL_ENABLED = os.getenv('EMAIL_ENABLED', 'true').lower() == 'true' and app.config['MAIL_USERNAME'] is not None
 
 # Session Configuration
 app.config['SESSION_COOKIE_SECURE'] = False  # Set True in production with HTTPS
@@ -81,8 +88,10 @@ user_sockets = {}
 pending_draws = {} # Track active draw offers: {game_id: player_id_who_offered}
 
 # Check if email is configured
-EMAIL_ENABLED = False  # Disabled for MVP - focusing on core features
-print("ℹ️  Email verification disabled - using simple auth")
+if EMAIL_ENABLED:
+    print(f"📧 Email verification enabled (Server: {app.config['MAIL_SERVER']})")
+else:
+    print("ℹ️  Email verification disabled - using simple auth/auto-verify")
 
 
 # Keep Alive Thread for Render
@@ -122,17 +131,16 @@ def load_user(user_id):
 
 
 def send_verification_email(user, code):
-    """Send verification code via Resend"""
-    if not RESEND_API_KEY:
-        print("⚠️ Resend not configured - verification disabled")
+    """Send verification code via configured SMTP server"""
+    if not EMAIL_ENABLED:
+        print("⚠️ Email system not configured")
         return False
     
     try:
-        params = {
-            "from": "GrandMaster Chess <onboarding@resend.dev>",
-            "to": [user.email],
-            "subject": "GrandMaster Chess - Verify your email",
-            "html": f'''
+        msg = Message(
+            "GrandMaster Chess - Verify your email",
+            recipients=[user.email],
+            html=f'''
 <html>
 <body style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
     <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -160,14 +168,13 @@ def send_verification_email(user, code):
 </body>
 </html>
 '''
-        }
-        
-        email_response = resend.Emails.send(params)
-        print(f"✅ Verification email sent to {user.email} (ID: {email_response['id']})")
+        )
+        mail.send(msg)
+        print(f"✅ Verification email sent to {user.email}")
         return True
         
     except Exception as e:
-        print(f"❌ Resend error: {e}")
+        print(f"❌ Email error: {e}")
         return False
 
 
@@ -222,19 +229,33 @@ def register():
         # Create user
         user = User(username=username, email=email)
         user.set_password(password)
-        user.email_verified = True  # Auto-verify for MVP
         
-        db.session.add(user)
-        db.session.commit()
-        
-        # Auto-login
-        login_user(user, remember=True)
-        
-        return jsonify({
-            'success': True,
-            'user': user.to_dict(),
-            'message': 'Account created! Welcome to GrandMaster Chess!'
-        })
+        if EMAIL_ENABLED:
+            user.email_verified = False
+            code = user.generate_verification_code()
+            send_verification_email(user, code)
+            db.session.add(user)
+            db.session.commit()
+            
+            # Login but require verification flag
+            login_user(user, remember=True)
+            return jsonify({
+                'success': True,
+                'user': user.to_dict(),
+                'verification_required': True,
+                'message': 'Account created! Please check your email for the verification code.'
+            })
+        else:
+            user.email_verified = True
+            db.session.add(user)
+            db.session.commit()
+            login_user(user, remember=True)
+            return jsonify({
+                'success': True,
+                'user': user.to_dict(),
+                'verification_required': False,
+                'message': 'Account created! Welcome to GrandMaster Chess!'
+            })
         
     except Exception as e:
         db.session.rollback()
@@ -1396,8 +1417,8 @@ if __name__ == '__main__':
     print("\n" + "="*60)
     print("🎮 GrandMaster Chess - COMPLETE Platform")
     print(f"📍 http://0.0.0.0:{port}")
-    print("🗄️  Database: SQLite (chess.db)")
-    print("🔌 Socket.IO: Enabled")
+    print(f"🗄️  Database: {('PostgreSQL' if DATABASE_URL else 'SQLite (chess.db)')}")
+    print("🔌 Socket.IO: Enabled (Eventlet)")
     print("📧 Email Verification:", "Enabled" if EMAIL_ENABLED else "Disabled")
     print("="*60 + "\n")
     

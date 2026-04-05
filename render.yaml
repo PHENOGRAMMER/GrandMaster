@@ -1,13 +1,22 @@
 services:
   - type: web
-    name: GrandMaster
+    name: grandmaster-chess
     env: docker
     plan: free
+    region: ohio
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: grand-master-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
 
 databases:
   - name: grand-master-db
     plan: free
+    region: ohio
